@@ -1,4 +1,4 @@
-# SCHAF: Single-Cell Histology Alignment Framework
+# SCHAF: Single-Cell Histology Analysis Framework
 
 SCHAF is a framework for aligning single-cell RNA sequencing data with histology images, enabling spatial gene expression prediction from H&E images.
 
