@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SCHAF (Single-Cell Histology Alignment Framework)
+SCHAF (Single-Cell Histology Analysis Framework)
 
 This script provides a unified interface for both training and inference of SCHAF models.
 It supports multiple scenarios including paired and unpaired training for:
