@@ -100,4 +100,8 @@ If you use SCHAF in your research, please cite our paper [paper citation to be a
 
 ## License
 
-[License information to be added] 
+MIT License
+
+## SCHAF-1M
+
+SCHAF-1M dataset can be accessed at the following Zenodo link: https://zenodo.org/records/15611768?preview=1&token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6IjA4Yjg3NjZkLWY0NWItNGE0OS1hYWIxLWQxZTkzYjYzOGMzMiIsImRhdGEiOnt9LCJyYW5kb20iOiI0NjU5MWVhMzc1MjU3YTNhNDU5MDIzMzU1ZjVlZjQyZiJ9.B14gC9v7iN8jG1-0vIbo_3Mc7LLKJ3IrwN8VH4-JE9XJDR4v8zpXleFU7E8YKKGCBMqKoY2EgB6O26wbA9RCdw
