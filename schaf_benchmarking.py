@@ -4,7 +4,6 @@ SCHAF Benchmarking Module
 This module provides functionality for training and evaluating SCHAF models on various benchmarking datasets.
 It supports both paired and unpaired training/inference modes.
 
-Author: Caroline Comitek
 """
 
 import os
