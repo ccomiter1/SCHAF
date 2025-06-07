@@ -55,7 +55,7 @@ The benchmarking module allows evaluation of SCHAF against other methods:
 
 ```bash
 python schaf_benchmarking.py \
-    --model-type [cycle|distance|caroline] \
+    --model-type [cycle|distance|crossmodal] \
     --dataset [mouse|cancer_in_sample|cancer_whole_sample] \
     --gpu 0 \
     --batch-size 32 \
