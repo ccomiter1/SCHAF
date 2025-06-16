@@ -96,7 +96,7 @@ jupyter lab
 
 ## Citation
 
-If you use SCHAF in your research, please cite our paper [paper citation to be added].
+If you use SCHAF in your research, please cite our paper: https://www.biorxiv.org/content/10.1101/2023.03.21.533680v2.
 
 ## License
 
