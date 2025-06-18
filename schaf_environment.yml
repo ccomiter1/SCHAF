@@ -1,4 +1,4 @@
-name: schaf_env
+name: final_schaf
 channels:
   - conda-forge
   - defaults

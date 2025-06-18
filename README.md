@@ -6,7 +6,7 @@ SCHAF is a framework for inferring single-cell RNA sequencing data from histolog
 
 1. Create and activate the conda environment:
 ```bash
-conda env create -f schaf_environment.yml
+mamba env create -f schaf_environment.yml
 conda activate final_schaf
 ```
 
