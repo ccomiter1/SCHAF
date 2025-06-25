@@ -302,6 +302,96 @@ def create_output_directories():
         'failed': failed_dirs
     }
 
+def validate_custom_data_format(data_dir: str, he_image: str, sc_file: str, st_file: str = None) -> dict:
+    """
+    Validate that custom data files exist and have the expected format.
+    
+    Args:
+        data_dir (str): Directory containing the data files
+        he_image (str): Filename of H&E image
+        sc_file (str): Filename of single-cell data
+        st_file (str, optional): Filename of spatial transcriptomics data
+        
+    Returns:
+        dict: Validation results with status and messages
+    """
+    validation_results = {
+        'valid': True,
+        'messages': [],
+        'files_found': {},
+        'data_info': {}
+    }
+    
+    # Check if data directory exists
+    if not os.path.exists(data_dir):
+        validation_results['valid'] = False
+        validation_results['messages'].append(f"Data directory not found: {data_dir}")
+        return validation_results
+    
+    # Check H&E image
+    he_path = os.path.join(data_dir, he_image)
+    if os.path.exists(he_path):
+        validation_results['files_found']['he_image'] = True
+        validation_results['messages'].append(f"✓ H&E image found: {he_image}")
+    else:
+        validation_results['valid'] = False
+        validation_results['files_found']['he_image'] = False
+        validation_results['messages'].append(f"✗ H&E image not found: {he_image}")
+    
+    # Check single-cell data
+    sc_path = os.path.join(data_dir, sc_file)
+    if os.path.exists(sc_path):
+        validation_results['files_found']['sc_data'] = True
+        validation_results['messages'].append(f"✓ Single-cell data found: {sc_file}")
+        
+        try:
+            # Load and inspect single-cell data
+            import scanpy as sc
+            sc_data = sc.read_h5ad(sc_path)
+            validation_results['data_info']['sc_cells'] = sc_data.shape[0]
+            validation_results['data_info']['sc_genes'] = sc_data.shape[1]
+            validation_results['messages'].append(f"  - Single-cell data: {sc_data.shape[0]} cells, {sc_data.shape[1]} genes")
+        except Exception as e:
+            validation_results['valid'] = False
+            validation_results['messages'].append(f"✗ Error reading single-cell data: {str(e)}")
+    else:
+        validation_results['valid'] = False
+        validation_results['files_found']['sc_data'] = False
+        validation_results['messages'].append(f"✗ Single-cell data not found: {sc_file}")
+    
+    # Check spatial transcriptomics data if provided
+    if st_file:
+        st_path = os.path.join(data_dir, st_file)
+        if os.path.exists(st_path):
+            validation_results['files_found']['st_data'] = True
+            validation_results['messages'].append(f"✓ Spatial transcriptomics data found: {st_file}")
+            
+            try:
+                # Load and inspect spatial data
+                import scanpy as sc
+                st_data = sc.read_h5ad(st_path)
+                validation_results['data_info']['st_spots'] = st_data.shape[0]
+                validation_results['data_info']['st_genes'] = st_data.shape[1]
+                validation_results['messages'].append(f"  - Spatial data: {st_data.shape[0]} spots, {st_data.shape[1]} genes")
+                
+                # Check if spatial coordinates are available
+                if 'spatial' in st_data.obsm:
+                    validation_results['messages'].append("  - Spatial coordinates found in obsm['spatial']")
+                elif 'x' in st_data.obs and 'y' in st_data.obs:
+                    validation_results['messages'].append("  - Spatial coordinates found in obs['x'] and obs['y']")
+                else:
+                    validation_results['messages'].append("  - Warning: No spatial coordinates found. Expected in obsm['spatial'] or obs['x']/obs['y']")
+                    
+            except Exception as e:
+                validation_results['valid'] = False
+                validation_results['messages'].append(f"✗ Error reading spatial transcriptomics data: {str(e)}")
+        else:
+            validation_results['valid'] = False
+            validation_results['files_found']['st_data'] = False
+            validation_results['messages'].append(f"✗ Spatial transcriptomics data not found: {st_file}")
+    
+    return validation_results
+
 def create_custom_scenario_config(scenario_name: str, 
                                  data_dir: str,
                                  he_image_filename: str,
