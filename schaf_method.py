@@ -79,6 +79,9 @@ NUM_WORKERS = 6 if torch.cuda.is_available() else 2
 PIN_MEMORY = torch.cuda.is_available()
 os.environ["OPENCV_IO_MAX_IMAGE_PIXELS"] = pow(2,40).__str__()
 
+# Import path configurations
+from schaf_paths import *
+
 # Add project paths
 PROJECT_ROOT = Path(os.getcwd()).parent
 sys.path.extend([
@@ -174,7 +177,7 @@ class ViT(nn.Module):
         return x
 
 class ViT_UNI(nn.Module):
-    def __init__(self, num_genes=1000, local_dir = f'{os.getcwd().split("/ccomiter/")[0]}/ccomiter/htapp_supervise/new_schaf_experiment_scripts/final_new_schaf_start_jan2324/VIT/UNI/checkpoint/'):
+    def __init__(self, num_genes=1000, local_dir=MODEL_PATHS['vit_uni_checkpoint']):
         super(ViT_UNI, self).__init__()
         self.model = timm.create_model(
             "vit_large_patch16_224", img_size=224, patch_size=16, init_values=1e-5, num_classes=0, dynamic_img_size=True
@@ -401,11 +404,11 @@ DEFAULT_TILE_RADIUS = 112
 # Dataset configurations
 SCENARIO_CONFIGS = {
     'mouse': {
-        'data_dir': '/storage/ccomiter/all_xenium_new_data/mouse_pup_data',
+        'data_dir': DATA_PATHS['mouse_xenium'],
         'he_path': 'Xenium_V1_mouse_pup_he_image.ome.tif',
-        'model_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/mouse_models',
-        'output_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/mouse_inferences',
-        'proj_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/mouse_folds',
+        'model_dir': MODEL_PATHS['mouse_models'],
+        'output_dir': OUTPUT_PATHS['mouse_inferences'],
+        'proj_dir': OUTPUT_PATHS['mouse_folds'],
         'stage1_suffix': 'st.h5ad',
         'stage2_suffix': 'tang_proj.h5ad',
         'use_hold_out': True,
@@ -415,11 +418,11 @@ SCENARIO_CONFIGS = {
         'needs_transform': False
     },
     'cancer_in_sample': {
-        'data_dir': '/storage/ccomiter/htapp_supervise/new_schaf_experiment_scripts/more_data/xenium',
+        'data_dir': DATA_PATHS['cancer_xenium'],
         'he_path': 'xenium_hist.png',
-        'model_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/xenium_cancer_models',
-        'output_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/xenium_cancer_inferences',
-        'proj_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/cancer_in_sample_folds',
+        'model_dir': MODEL_PATHS['xenium_cancer_models'],
+        'output_dir': OUTPUT_PATHS['xenium_cancer_inferences'],
+        'proj_dir': OUTPUT_PATHS['cancer_folds'],
         'stage1_suffix': 'st.h5ad',
         'stage2_suffix': 'tang_proj.h5ad',
         'use_hold_out': True,
@@ -429,11 +432,11 @@ SCENARIO_CONFIGS = {
         'needs_transform': False
     },
     'cancer_whole_sample': {
-        'data_dir': '/storage/ccomiter/htapp_supervise/new_schaf_experiment_scripts/more_data/xenium',
+        'data_dir': DATA_PATHS['cancer_xenium'],
         'he_path': 'HE_other_sample_xenium.tif',
-        'model_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/xenium_cancer_models',
-        'output_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/xenium_cancer_inferences',
-        'proj_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/cancer_in_sample_folds',
+        'model_dir': MODEL_PATHS['xenium_cancer_models'],
+        'output_dir': OUTPUT_PATHS['xenium_cancer_inferences'],
+        'proj_dir': OUTPUT_PATHS['cancer_folds'],
         'stage1_suffix': 'st.h5ad',
         'stage2_suffix': 'tang_proj.h5ad',
         'use_hold_out': False,
@@ -444,43 +447,43 @@ SCENARIO_CONFIGS = {
         'transform_file': 'alignment_new_xen.csv'
     },
     'htapp': {
-        'save_models_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/htapp_models_with_annos',
-        'hist_embeddings_dir': 'htapp_hist_embeddings',
-        'sc_embeddings_dir': 'htapp_sc_embeddings',
-        'sc_dir': '/storage/ccomiter/htapp_supervise/final_scs/schtapp',
+        'save_models_dir': MODEL_PATHS['htapp_models'],
+        'hist_embeddings_dir': EMBEDDING_PATHS['htapp_hist_embeddings'],
+        'sc_embeddings_dir': EMBEDDING_PATHS['htapp_sc_embeddings'],
+        'sc_dir': DATA_PATHS['htapp_sc'],
         'keys': ['4531', '7179', '7479', '7629', '932', '6760', '7149', '4381', '8239'],
         'is_paired': False,
         'hist_embed_shape': 1024,
         'sc_embed_shape': 512,
-        'output_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/htapp_inferences'
+        'output_dir': OUTPUT_PATHS['htapp_inferences']
     },
     'placenta': {
-        'save_models_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/placenta_models_with_annos',
-        'hist_embeddings_dir': 'newest_bestest_placenta_hist_embeddings',
-        'sc_embeddings_dir': 'placenta_sc_embeddings',
-        'sc_dir': '/storage/ccomiter/htapp_supervise/final_scs/scplacenta',
+        'save_models_dir': MODEL_PATHS['placenta_models'],
+        'hist_embeddings_dir': EMBEDDING_PATHS['placenta_hist_embeddings'],
+        'sc_embeddings_dir': EMBEDDING_PATHS['placenta_sc_embeddings'],
+        'sc_dir': DATA_PATHS['placenta_sc'],
         'keys': ['7', '8', '9', '11'],
         'k_to_code': {'7': 'JS34', '8': 'JS40', '9': 'JS35', '11': 'JS36'},
         'is_paired': False,
-        'output_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/placenta_inferences'
+        'output_dir': OUTPUT_PATHS['placenta_inferences']
     },
     'lung_cancer': {
-        'save_models_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/lung_cancer_models',
-        'hist_embeddings_dir': 'lung_cancer_hist_embeddings',
-        'sc_embeddings_dir': 'lung_cancer_sc_embeddings',
-        'sc_dir': '/storage2/ccomiter/metamia_data/rest_adatas/full_all_var_adatas',
+        'save_models_dir': MODEL_PATHS['lung_cancer_models'],
+        'hist_embeddings_dir': EMBEDDING_PATHS['lung_cancer_hist_embeddings'],
+        'sc_embeddings_dir': EMBEDDING_PATHS['lung_cancer_sc_embeddings'],
+        'sc_dir': DATA_PATHS['lung_cancer_sc'],
         'is_paired': False,
         'hist_embed_shape': 1024,
         'sc_embed_shape': 512,
-        'output_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/lung_cancer_inferences'
+        'output_dir': OUTPUT_PATHS['lung_cancer_inferences']
     }
 }
 
 # Pre-training data preparation constants
-MOUSE_XEN_DIR = '/storage/ccomiter/all_xenium_new_data/mouse_pup_data'
-CANCER_XEN_DIR = '/storage/ccomiter/htapp_supervise/new_schaf_experiment_scripts/more_data/xenium'
-MOUSE_CHUNKS_DIR = '/mounts/stultzlab03_storage2/ccomiter/mouse_chunks'
-CANCER_CHUNKS_DIR = '/mounts/stultzlab03_storage2/ccomiter/cancer_chunks'
+MOUSE_XEN_DIR = DATA_PATHS['mouse_xenium']
+CANCER_XEN_DIR = DATA_PATHS['cancer_xenium']
+MOUSE_CHUNKS_DIR = TEMP_PATHS['mouse_chunks']
+CANCER_CHUNKS_DIR = TEMP_PATHS['cancer_chunks']
 CORRELATION_THRESHOLD = 0.5
 CHUNK_SIZE = 22500
 MOUSE_SAMPLE_SIZE = 45000
@@ -488,9 +491,9 @@ MOUSE_SAMPLE_SIZE = 45000
 # Training preparation configurations
 PREP_CONFIGS = {
     'mouse': {
-        'data_dir': '/storage/ccomiter/all_xenium_new_data/mouse_pup_data',
-        'chunks_dir': '/storage2/ccomiter/mouse_chunks',
-        'output_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/mouse_folds',
+        'data_dir': DATA_PATHS['mouse_xenium'],
+        'chunks_dir': TEMP_PATHS['mouse_chunks_alt'],
+        'output_dir': OUTPUT_PATHS['mouse_folds'],
         'num_chunks': 60,
         'transform_coords': True,
         'zone_boundaries': {
@@ -499,9 +502,9 @@ PREP_CONFIGS = {
         }
     },
     'cancer': {
-        'data_dir': '/mounts/stultzlab03/ccomiter/htapp_supervise/new_schaf_experiment_scripts/more_data/xenium',
-        'chunks_dir': '/mounts/stultzlab03_storage2/ccomiter/cancer_chunks',
-        'output_dir': '/storage/ccomiter/schaf_for_revision052424/data/xenium_cancer/cancer_in_sample_folds',
+        'data_dir': DATA_PATHS['cancer_xenium'],
+        'chunks_dir': TEMP_PATHS['cancer_chunks'],
+        'output_dir': OUTPUT_PATHS['cancer_folds'],
         'num_chunks': 8,
         'transform_coords': False,
         'zone_boundaries': {
@@ -645,13 +648,13 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
 
         if scenario == 'htapp':
             # Process HTAPP histology data
-            hists_dir = '/mounts/stultzlab03/ccomiter/htapp_supervise/final_data0315/hists_may_good'
+            hists_dir = DATA_PATHS['htapp_hists']
             for f in os.listdir(hists_dir):
                 if '.png' not in f:
                     continue
                 k = f.split('.')[0]
                 hist = iio.imread(os.path.join(hists_dir, f))
-                seg = pd.read_csv(f'../../../htapp_supervise/final_data0315/all_hists_infos0315/{k}_info.txt', sep="\t", header=0)
+                seg = pd.read_csv(f'{DATA_PATHS["htapp_hist_info"]}/{k}_info.txt', sep="\t", header=0)
                 xs = np.array(seg['Centroid X px']).astype(int)
                 ys = np.array(seg['Centroid Y px']).astype(int)
                 
@@ -662,15 +665,15 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
             k_to_code = config['k_to_code']
             for k in k_to_code:
                 name = k_to_code[k]
-                image = cv2.imread(f'newest_bestest_placenta_hes/{name}.jpg', -1)
-                xs = np.load(f'newest_bestest_placenta_hes/{name}_final_xs.npy')
-                ys = np.load(f'newest_bestest_placenta_hes/{name}_final_ys.npy')
+                image = cv2.imread(f'{DATA_PATHS["placenta_hists"]}/{name}.jpg', -1)
+                xs = np.load(f'{DATA_PATHS["placenta_hists"]}/{name}_final_xs.npy')
+                ys = np.load(f'{DATA_PATHS["placenta_hists"]}/{name}_final_ys.npy')
                 
                 process_and_save_embeddings(image, xs, ys, k, embedding_maker, config['hist_embeddings_dir'], tile_radius)
 
         elif scenario == 'lung_cancer':
             # Process lung cancer histology data
-            the_dir = '/mounts/stultzlab03/ccomiter/schaf_for_revision052424/data/xenium_cancer/lung_cancer_segmentation'
+            the_dir = DATA_PATHS['lung_cancer_segmentation']
             for f in os.listdir(the_dir):
                 if 'chunk' not in f:
                     continue
@@ -685,7 +688,7 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
 
     if modality in ['sc', 'both']:
         # Initialize scRNA-seq embedding model
-        model_dir = '/storage/ccomiter/htapp_supervise/new_schaf_experiment_scripts/final_new_schaf_start_jan2324/scgpt_model/scGPT_pancancer/'
+        model_dir = MODEL_PATHS['scgpt_pancancer']
         
         if scenario == 'htapp':
             # Process HTAPP scRNA-seq data
@@ -708,8 +711,8 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
 
         elif scenario == 'placenta':
             # Process placenta scRNA-seq data
-            model_dir = '/storage/ccomiter/htapp_supervise/new_schaf_experiment_scripts/final_new_schaf_start_jan2324/scgpt_model/scGPT_human/'
-            the_sc = sc.read_h5ad(f'{os.getcwd().split("ccomiter")[0]}ccomiter/schaf_for_revision052424/data/human_placenta/hplacenta_gene_matrix.h5ad')
+            model_dir = MODEL_PATHS['scgpt_human']
+            the_sc = sc.read_h5ad(DATA_PATHS['placenta_metadata'])
             
             for k, code in config['k_to_code'].items():
                 sc_adata = the_sc[the_sc.obs['Sample']==code]
@@ -781,13 +784,13 @@ def prepare_paired_data(scenario: str, force_recompute: bool = False) -> None:
     print(f"Preparing {scenario} data...")
     
     # Run Tangram processing
-    run_tangram(scenario, random_split=True)
+    train_genes = run_tangram(scenario, random_split=True)
     
     # Load and prepare data
     if scenario == 'mouse':
-        st_data, metadata = load_mouse_prep_data(config)
+        st_data, metadata = load_mouse_prep_data(config, train_genes)
     else:
-        st_data, metadata = load_cancer_prep_data(config)
+        st_data, metadata = load_cancer_prep_data(config, train_genes)
     
     # Process chunks and save results
     sts, tang_projs = process_chunks_prep(config, st_data, metadata)
@@ -807,7 +810,7 @@ def get_zone(x: int, y: int, boundaries: Dict[str, int]) -> int:
         return 3
 
 
-def load_mouse_prep_data(config: Dict) -> Tuple[sc.AnnData, pd.DataFrame]:
+def load_mouse_prep_data(config: Dict, train_genes: Set[str]) -> Tuple[sc.AnnData, pd.DataFrame]:
     """Load and preprocess mouse data for training preparation."""
     # Load spatial transcriptomics data
     st_data = sc.read_10x_h5(os.path.join(config['data_dir'], 'cell_feature_matrix.h5'))
@@ -860,9 +863,9 @@ def load_mouse_prep_data(config: Dict) -> Tuple[sc.AnnData, pd.DataFrame]:
     metadata['broad_clusters'] = broad_clusters.loc[metadata.index]['Cluster']
     metadata['fine_clusters'] = fine_clusters.loc[metadata.index]['Cluster']
     
-    return st_data, metadata
+    return st_data[::,train_genes], metadata
 
-def load_cancer_prep_data(config: Dict) -> Tuple[sc.AnnData, pd.DataFrame]:
+def load_cancer_prep_data(config: Dict, train_genes: Set[str]) -> Tuple[sc.AnnData, pd.DataFrame]:
     """Load and preprocess cancer data for training preparation."""
     # Load data
     st_data = sc.read_h5ad(os.path.join(config['data_dir'], 'xenium_breast.h5ad'))
@@ -870,11 +873,11 @@ def load_cancer_prep_data(config: Dict) -> Tuple[sc.AnnData, pd.DataFrame]:
     
     # Load clustering information
     broad_clusters = pd.read_csv(
-        '/mounts/stultzlab03/ccomiter/schaf_for_revision052424/data/xenium_cancer/big_sample1_er_positive/analysis/clustering/gene_expression_kmeans_10_clusters/clusters.csv'
+        f'{DATA_PATHS["cancer_clustering_base"]}/gene_expression_kmeans_10_clusters/clusters.csv'
     )['Cluster']
     
     fine_clusters = pd.read_csv(
-        '/mounts/stultzlab03/ccomiter/schaf_for_revision052424/data/xenium_cancer/big_sample1_er_positive/analysis/clustering/gene_expression_graphclust/clusters.csv'
+        f'{DATA_PATHS["cancer_clustering_base"]}/gene_expression_graphclust/clusters.csv'
     )['Cluster']
     
     # Get coordinates
@@ -899,7 +902,7 @@ def load_cancer_prep_data(config: Dict) -> Tuple[sc.AnnData, pd.DataFrame]:
     del st_data.var['feature_types']
     del st_data.var['genome']
     
-    return st_data, metadata
+    return st_data[::,train_genes], metadata
 
 def process_chunks_prep(config: Dict, 
                        st_data: sc.AnnData, 
@@ -1035,7 +1038,7 @@ def normalize_data(fold_to_trans: dict,
 # Type aliases for complex return types
 from typing import Any
 
-def load_data_for_scenario(config: dict, args: dict) -> Any:
+def load_data_for_scenario(config: dict, args: dict, stage2: bool = False) -> Any:
     """
     Load and prepare data based on the training scenario.
     
@@ -1062,7 +1065,7 @@ def load_data_for_scenario(config: dict, args: dict) -> Any:
         # Load fold data
         fold_to_trans = {}
         for fold in os.listdir(config['data_dir']):
-            if not fold.endswith(config['stage1_suffix']):
+            if not fold.endswith(config['stage2_suffix' if stage2 else 'stage1_suffix']):
                 continue
                 
             fold_id = fold.split('_')[0]
@@ -1318,6 +1321,38 @@ def train_unpaired_model(hist_loader: DataLoader,
     }
     if args['use_cell_types']:
         metrics_history['ct_losses'] = []
+        metrics_history['ct_pretrain_losses'] = []
+        
+        # Pre-train cell type classifier
+        print("Pre-training cell type classifier...")
+        ct_classifier = models['ct_classifier'].to(device)
+        ct_optimizer = optimizers['ct_classifier']
+        
+        for epoch in range(args['ct_pretrain_epochs']):
+            epoch_ct_loss = 0.0
+            num_ct_batches = 0
+            
+            for hist_batch, hist_ct in hist_loader:
+                hist_batch, hist_ct = hist_batch.to(device), hist_ct.to(device)
+                
+                ct_optimizer.zero_grad()
+                ct_logits = ct_classifier(hist_batch)
+                ct_loss = F.cross_entropy(ct_logits, hist_ct)
+                ct_loss.backward()
+                ct_optimizer.step()
+                
+                epoch_ct_loss += ct_loss.item()
+                num_ct_batches += 1
+            
+            avg_ct_loss = epoch_ct_loss / num_ct_batches
+            metrics_history['ct_pretrain_losses'].append(avg_ct_loss)
+            print(f'CT Pre-train Epoch {epoch+1}: Loss = {avg_ct_loss:.4f}')
+            
+            if args['use_wandb']:
+                wandb.log({
+                    'ct_pretrain_loss': avg_ct_loss,
+                    'ct_pretrain_epoch': epoch
+                })
     
     # Get models and optimizers
     generator = models['generator'].to(device)
@@ -1387,7 +1422,7 @@ def train_unpaired_model(hist_loader: DataLoader,
             
             if args['use_cell_types']:
                 # Add cell type consistency loss
-                fake_ct_logits = models['ct_classifier'](fake_hist)
+                fake_ct_logits = ct_classifier(fake_hist)
                 ct_loss = F.cross_entropy(fake_ct_logits, sc_ct)
                 gen_loss = gen_loss + ct_loss
                 epoch_metrics['ct_loss'] += ct_loss.item()
@@ -1448,9 +1483,10 @@ def train_unpaired_model(hist_loader: DataLoader,
         'hist_decoder': hist_decoder.state_dict(),
         'sc_decoder': sc_decoder.state_dict()
     }
+    if args['use_cell_types']:
+        best_models['ct_classifier'] = ct_classifier.state_dict()
     
     return metrics_history, best_models
-
 def setup_wandb(args: dict) -> None:
     """
     Initialize Weights & Biases logging.
@@ -1484,7 +1520,7 @@ def setup_device(gpu_id: int) -> torch.device:
     
     return device
 
-def setup_paired_training(config: dict, args: dict) -> Any:
+def setup_paired_training(config: dict, args: dict, stage1_model: nn.Module = None) -> Any:
     """
     Set up models and optimizer for paired training.
     
@@ -1497,6 +1533,16 @@ def setup_paired_training(config: dict, args: dict) -> Any:
     """
     # Initialize model
     model = MerNet()
+    
+    # If stage1 model exists, load encoder weights
+    if stage1_model is not None:
+        # Get encoder state dict from stage1 model
+        stage1_encoder_dict = {k: v for k, v in stage1_model.state_dict().items() if 'part_one' in k}
+        
+        # Load encoder weights into new model
+        model_dict = model.state_dict()
+        model_dict.update(stage1_encoder_dict)
+        model.load_state_dict(model_dict)
     
     # Load pre-trained weights if available
     if os.path.exists(config['model_dir']):
@@ -1659,9 +1705,9 @@ def setup_model(config: Dict,
         pretrain_hist=True,
         pretrain_st=os.path.join(
             config['model_dir'],
-            f'experiment_2024-06-10_{config["name"]}_leave_out_fold_{fold}_final_model.pth'
+            f'fold_{fold}_final_model.pth'
             if fold is not None else
-            f'experiment_2024-06-12_{config["name"]}_stage2_whole_sample_final_model.pth'
+            f'{config["name"]}_stage2_whole_sample_final_model.pth'
         ),
         have_relu=False
     )
@@ -1669,9 +1715,9 @@ def setup_model(config: Dict,
     # Load model weights
     weights_path = os.path.join(
         config['model_dir'],
-        f'experiment_2024-06-{11 if fold == 2 else 12}_{config["name"]}_stage2_leave_out_fold_{fold}_final_model.pth'
+        f'{config["name"]}_stage2_leave_out_fold_{fold}_final_model.pth'
         if fold is not None else
-        f'experiment_2024-06-12_{config["name"]}_stage2_whole_sample_final_model.pth'
+        f'{config["name"]}_stage2_whole_sample_final_model.pth'
     )
     model.load_state_dict(torch.load(weights_path)['model_state_dict'])
     
@@ -2108,6 +2154,7 @@ def run_tangram(dataset: str, random_split: bool = True) -> None:
         )
     # Project genes
     project_genes(dataset, 'random')
+    return train_genes
 
 def load_mouse_data() -> Tuple[sc.AnnData, sc.AnnData]:
     """Load mouse data for Tangram alignment (match all_tangram_final.py logic)"""
@@ -2130,7 +2177,7 @@ def load_cancer_data() -> Tuple[sc.AnnData, sc.AnnData]:
     """Load cancer data for Tangram alignment (match all_tangram_final.py logic)"""
     xen_dir = CANCER_XEN_DIR
     the_st = sc.read_h5ad(os.path.join(xen_dir, 'xenium_breast.h5ad'))
-    the_sc = sc.read_h5ad('/storage/ccomiter/htapp_supervise/new_schaf_experiment_scripts/more_data/xenium_single_cell.h5')
+    the_sc = sc.read_h5ad(os.path.join(xen_dir, 'xenium_single_cell.h5'))
     return the_sc, the_st
 
 def preprocess_data(the_sc: sc.AnnData, the_st: sc.AnnData) -> Tuple[sc.AnnData, sc.AnnData]:
@@ -2154,13 +2201,6 @@ def preprocess_data(the_sc: sc.AnnData, the_st: sc.AnnData) -> Tuple[sc.AnnData,
     
     return the_sc, the_st
 
-def split_genes(the_st: sc.AnnData, random_split: bool) -> Tuple[Set[str], Set[str]]:
-    all_genes = list(the_st.var.index)
-    random.shuffle(all_genes)
-    split_idx = len(all_genes) // 2
-    train_genes = set(all_genes[:split_idx])
-    test_genes = set(all_genes[split_idx:]) 
-    return train_genes, test_genes
 
 def process_single_chunk(the_sc: sc.AnnData, 
                         the_st: sc.AnnData, 
@@ -2273,6 +2313,7 @@ def main():
     config = SCENARIO_CONFIGS[args['scenario']]
     if args.get('mode', 'train') == 'train':
         if config['is_paired']:
+            # stage 1
             prepare_paired_data(args['scenario'], force_recompute=False)
             he_image, fold_to_trans, mu, sigma = load_data_for_scenario(config, args)
             train_loader, val_loader = prepare_paired_dataloaders(
@@ -2280,6 +2321,19 @@ def main():
                 he_image, args, mu, sigma
             )
             model, optimizer = setup_paired_training(config, args)
+            model = model.to(device)
+            criterion = nn.MSELoss()
+            train_losses, val_losses = train_paired_model(
+                model, train_loader, val_loader, optimizer, criterion, device, args
+            )
+
+            # stage 2
+            he_image, fold_to_trans, mu, sigma = load_data_for_scenario(config, args, stage2=True)
+            train_loader, val_loader = prepare_paired_dataloaders(
+                fold_to_trans, args['fold'] if config['use_hold_out'] else None,
+                he_image, args, mu, sigma
+            )
+            model, optimizer = setup_paired_training(config, args, stage1_model=model)
             model = model.to(device)
             criterion = nn.MSELoss()
             train_losses, val_losses = train_paired_model(
