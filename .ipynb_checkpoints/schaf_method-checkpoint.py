@@ -15,7 +15,7 @@ Usage:
 
 Common Options:
     --gpu GPU           GPU device to use
-    --fold FOLD         Fold/key to use as hold out (later for inference)
+    --fold FOLD         Fold/key to use
     --batch-size SIZE   Batch size for training/inference
     --workers NUM       Number of worker processes
     --pin-memory       Use pinned memory for data loading
@@ -70,7 +70,6 @@ import scgpt
 import timm
 from einops import rearrange
 from torch import einsum
-import torch.nn.utils as U
 
 # Configure system settings
 Image.MAX_IMAGE_PIXELS = 933120000  # Allow loading large images
@@ -290,96 +289,6 @@ class JustPartTwo(nn.Module):
     def forward(self, x):
         return self.part_two(x)
 
-class HEGen(nn.Module):
-    def __init__(self, latent_dim=1<<9):
-        super(HEGen, self).__init__()
-        self.part_two = nn.Sequential(
-            nn.Linear(1<<10, 1<<10),
-            nn.BatchNorm1d(1<<10),
-            nn.ReLU(),
-            nn.Linear(1<<10, 1<<10),
-            nn.BatchNorm1d(1<<10),
-            nn.ReLU(),
-            nn.Linear(1<<10, 1<<10),
-            nn.BatchNorm1d(1<<10),
-            nn.ReLU(),
-            nn.Linear(1<<10, 1<<9),
-            nn.BatchNorm1d(1<<9),
-            nn.ReLU(),
-            nn.Linear(1<<9, latent_dim),
-        )
-    def forward(self, x):
-        return self.part_two(x)
-
-class StandardDecoder(nn.Module):
-    def __init__(self, input_dim=512, latent_dim=512, hidden_dim=2048):
-        super(StandardDecoder, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(latent_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, input_dim),
-        )
-        self.latent_dim = latent_dim
-    def forward(self, x):
-        res = self.net(x)
-        return res
-
-class TransferModel(nn.Module):
-    def __init__(self, part1, part2):
-        super(TransferModel, self).__init__()
-        self.part_one = part1
-        self.part_two = part2
-    def forward(self, x):
-        return self.part_two(self.part_one(x))
-
-class Discriminator(nn.Module):
-    def __init__(self, latent_dim=1<<9, spectral=True, end_dim=2):
-        super(Discriminator, self).__init__()
-        self.net = nn.Sequential(
-            U.spectral_norm(nn.Linear(latent_dim, 1<<8)),
-            nn.ReLU(),
-            U.spectral_norm(nn.Linear(1<<8, 1<<7)),
-            nn.ReLU(),
-            U.spectral_norm(nn.Linear(1<<7, 1<<6)),
-            nn.ReLU(),
-            U.spectral_norm(nn.Linear(1<<6, 1<<5)),
-            nn.ReLU(),
-            U.spectral_norm(nn.Linear(1<<5, end_dim)),
-        )
-    def forward(self, x):
-        return self.net(x)
-
-class HEDecoder(nn.Module):
-    def __init__(self, latent_dim=1<<9):
-        super(HEDecoder, self).__init__()
-        self.part_two = nn.Sequential(
-            nn.Linear(latent_dim, 1<<9),
-            nn.BatchNorm1d(1<<9),
-            nn.ReLU(),
-            nn.Linear(1<<9, 1<<10),
-            nn.BatchNorm1d(1<<10),
-            nn.ReLU(),
-            nn.Linear(1<<10, 1<<10),
-            nn.BatchNorm1d(1<<10),
-            nn.ReLU(),
-            nn.Linear(1<<10, 1<<10),
-            nn.BatchNorm1d(1<<10),
-            nn.ReLU(),
-            nn.Linear(1<<10, 1<<10),
-        )
-    def forward(self, x):
-        return self.part_two(x)
-
 #######################################################################################
 # Configuration Constants
 #######################################################################################
@@ -476,6 +385,21 @@ SCENARIO_CONFIGS = {
     }
 }
 
+# Marker gene lists for different scenarios
+MARKER_GENES = {
+    'cancer': [
+        'gjb2', 'prf1', 'oprpn', 'qars', 'ankrd29', 'ms4a1', 'slamf7', 'kdr', 'tomm7', 'cav1', 'fcgr3a', 
+        'lars', 'aqp3', 'igf1', 'tpd52', 'tcim', 'gzmb', 'lep', 'krt5', 'slamf1', 'cxcr4', 'znf562', 'krt14',
+        'agr3', 'dusp5', 'mki67', 'sfrp4', 'fam49a', 'apobec3a', 's100a8', 'cd93', 'basp1', 'cd69', 'elf3', 
+        'trac', 'tuba4a', 'ccdc80', 'tcf15', 'sell', 'gpr183', 'esr1', 'cd4', 'rapgef3', 'lrrc15', 'gnly', 'cd3e'
+    ],
+    'mouse': [
+        'hmgcs2', 'krt19', 'sdc1', 'scgb3a2', 'dbpht2', 'try10', 'hrc', 
+        'pck1', 'gpx6', 'reg3g', 'tubb3', 'sypl2', 'rbp1', 'slc14a2', 'cd5l', 
+        'crct1', 'anxa8', 'slc4a4', '1110017d15rik', 'nupr1', 'gm94', 'higd1b'
+    ]
+}
+
 # Pre-training data preparation constants
 MOUSE_XEN_DIR = '/storage/ccomiter/all_xenium_new_data/mouse_pup_data'
 CANCER_XEN_DIR = '/storage/ccomiter/htapp_supervise/new_schaf_experiment_scripts/more_data/xenium'
@@ -569,55 +493,7 @@ class UnpairedDataset(Dataset):
 #######################################################################################
 # Training Functions
 #######################################################################################
-# Common dataset class for histology embeddings
-class HistSampleDataset(Dataset):
-    def __init__(self, he_image, xs, ys, tile_radius):
-        self.he_image = he_image
-        self.xs = xs
-        self.ys = ys
-        self.tile_radius = tile_radius
-        self.mean = (0.485, 0.456, 0.406)
-        self.std = (0.229, 0.224, 0.225)
 
-        self.trnsfrms_val = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Resize(224),
-            transforms.Normalize(mean=self.mean, std=self.std),
-        ])
-
-    def __len__(self):
-        return len(self.xs)
-    
-    def __getitem__(self, index):
-        x = int(self.xs[index])
-        y = int(self.ys[index])
-        img = np.zeros((self.tile_radius*2, self.tile_radius*2, 3))
-        to_be = self.he_image[
-            max(0, y-self.tile_radius):max(0, y+self.tile_radius),
-            max(0, x-self.tile_radius):max(0, x+self.tile_radius),
-        ]
-        img[:to_be.shape[0],:to_be.shape[1]] = to_be
-        if img.max() > 1.:
-            img = img / 255.
-        img = self.trnsfrms_val(img)
-        return img
-
-
-# Add transform_coordinates definition (from old_schaf_inference.py)
-from numba import njit, prange
-import numpy as np
-
-def transform_coordinates(horis: np.ndarray, verts: np.ndarray, inv_trans: np.ndarray) -> tuple:
-    new_horis, new_verts = np.zeros_like(horis), np.zeros_like(verts)
-    for t in range(len(horis)):
-        i = horis[t] / .2125
-        j = verts[t] / .2125
-        new = inv_trans.dot(np.array([i, j, 1]))
-        new_horis[t] = new[0]
-        new_verts[t] = new[1]
-    return new_horis, new_verts
-
-device = torch.device("cuda")
 def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> None:
     """
     Generate embeddings for different scenarios using a unified approach.
@@ -630,18 +506,43 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
     """
     device = torch.device("cuda")
 
-    # Set tile_radius per scenario
-    if scenario == 'htapp':
-        tile_radius = 75
-    elif scenario in ['lung_cancer', 'placenta']:
-        tile_radius = 210
-    else:
-        tile_radius = 210
-
     if modality in ['hist', 'both']:
         # Initialize histology embedding model
         embedding_maker = ViT_UNI().to(device)
         embedding_maker = embedding_maker.eval()
+
+        # Common dataset class for histology embeddings
+        class HistSampleDataset(Dataset):
+            def __init__(self, he_image, xs, ys, tile_radius):
+                self.he_image = he_image
+                self.xs = xs
+                self.ys = ys
+                self.tile_radius = tile_radius
+                self.mean = (0.485, 0.456, 0.406)
+                self.std = (0.229, 0.224, 0.225)
+
+                self.trnsfrms_val = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Resize(224),
+                    transforms.Normalize(mean=self.mean, std=self.std),
+                ])
+
+            def __len__(self):
+                return len(self.xs)
+            
+            def __getitem__(self, index):
+                x = int(self.xs[index])
+                y = int(self.ys[index])
+                img = np.zeros((self.tile_radius*2, self.tile_radius*2, 3))
+                to_be = self.he_image[
+                    max(0, y-self.tile_radius):max(0, y+self.tile_radius),
+                    max(0, x-self.tile_radius):max(0, x+self.tile_radius),
+                ]
+                img[:to_be.shape[0],:to_be.shape[1]] = to_be
+                if img.max() > 1.:
+                    img = img / 255.
+                img = self.trnsfrms_val(img)
+                return img
 
         if scenario == 'htapp':
             # Process HTAPP histology data
@@ -655,7 +556,7 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
                 xs = np.array(seg['Centroid X px']).astype(int)
                 ys = np.array(seg['Centroid Y px']).astype(int)
                 
-                process_and_save_embeddings(hist, xs, ys, k, embedding_maker, config['hist_embeddings_dir'], tile_radius)
+                process_and_save_embeddings(hist, xs, ys, k, embedding_maker, config['hist_embeddings_dir'])
 
         elif scenario == 'placenta':
             # Process placenta histology data
@@ -666,7 +567,7 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
                 xs = np.load(f'newest_bestest_placenta_hes/{name}_final_xs.npy')
                 ys = np.load(f'newest_bestest_placenta_hes/{name}_final_ys.npy')
                 
-                process_and_save_embeddings(image, xs, ys, k, embedding_maker, config['hist_embeddings_dir'], tile_radius)
+                process_and_save_embeddings(image, xs, ys, k, embedding_maker, config['hist_embeddings_dir'])
 
         elif scenario == 'lung_cancer':
             # Process lung cancer histology data
@@ -681,7 +582,7 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
                 xs = np.array(the_seg['centroid_y']).astype(int)
                 ys = np.array(the_seg['centroid_x']).astype(int)
                 
-                process_and_save_embeddings(the_chunk, xs, ys, name, embedding_maker, config['hist_embeddings_dir'], tile_radius)
+                process_and_save_embeddings(the_chunk, xs, ys, name, embedding_maker, config['hist_embeddings_dir'])
 
     if modality in ['sc', 'both']:
         # Initialize scRNA-seq embedding model
@@ -745,9 +646,9 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
                     os.makedirs(config['sc_embeddings_dir'], exist_ok=True)
                     new_adata.write(f"{config['sc_embeddings_dir']}/{k}.h5ad")
 
-def process_and_save_embeddings(image, xs, ys, name, embedding_maker, save_dir, tile_radius):
+def process_and_save_embeddings(image, xs, ys, name, embedding_maker, save_dir):
     """Helper function to process and save embeddings for a single image."""
-    the_ds = HistSampleDataset(image, xs, ys, tile_radius)
+    the_ds = HistSampleDataset(image, xs, ys, 210)
     the_dl = DataLoader(the_ds, 64, shuffle=0, num_workers=6, pin_memory=1)
     
     with torch.no_grad():
@@ -794,18 +695,6 @@ def prepare_paired_data(scenario: str, force_recompute: bool = False) -> None:
     concatenate_and_save(sts, tang_projs, config, force_recompute)
     
     print(f"Finished preparing {scenario} data!")
-
-def get_zone(x: int, y: int, boundaries: Dict[str, int]) -> int:
-    """Determine which zone a point belongs to based on its coordinates."""
-    if (y < boundaries['y_split'] and x < boundaries['x_split']):
-        return 0
-    elif (y >= boundaries['y_split'] and x >= boundaries['x_split']):
-        return 1
-    elif (y < boundaries['y_split'] and x >= boundaries['x_split']):
-        return 2
-    else:
-        return 3
-
 
 def load_mouse_prep_data(config: Dict) -> Tuple[sc.AnnData, pd.DataFrame]:
     """Load and preprocess mouse data for training preparation."""
@@ -2026,12 +1915,18 @@ def run_lung_cancer_inference(args: argparse.Namespace):
     final_adata.write(output_path)
 
 def load_embeddings(data_type: str, config: Dict) -> Dict[str, np.ndarray]:
-    """Use generate_embeddings instead of loading from disk."""
-    # Instead of loading, call generate_embeddings and return the result
-    # This function will now call generate_embeddings and return the generated embeddings
-    # For compatibility, we return an empty dict (actual usage will be via generate_embeddings)
-    generate_embeddings(config['scenario'], config)
-    return {}
+    """Load embeddings for unpaired training"""
+    embeddings = {}
+    embeddings_dir = os.path.join(
+        config['save_models_dir'],
+        config[f'{data_type}_embeddings_dir']
+    )
+    
+    for file in os.listdir(embeddings_dir):
+        k = file.split('.')[0]
+        embeddings[k] = np.load(os.path.join(embeddings_dir, file))
+    
+    return embeddings
 
 def normalize_embeddings(hist_embeddings: Dict[str, np.ndarray], 
                        sc_embeddings: Dict[str, np.ndarray], 
@@ -2080,69 +1975,65 @@ def normalize_embeddings(hist_embeddings: Dict[str, np.ndarray],
     return hist_embeddings[key], sc_embeddings[key]
 
 def run_tangram(dataset: str, random_split: bool = True) -> None:
-    """Run Tangram alignment for a specific dataset (random split only)"""
+    """Run Tangram alignment for a specific dataset"""
     # Load data
     if dataset == 'mouse':
         the_sc, the_st = load_mouse_data()
     else:
         the_sc, the_st = load_cancer_data()
+    
     # Preprocess data
     the_sc, the_st = preprocess_data(the_sc, the_st)
-    # Only random split supported
-    all_genes = list(the_st.var.index)
-    random.shuffle(all_genes)
-    split_idx = len(all_genes) // 2
-    train_genes = set(all_genes[:split_idx])
+    
+    # Split genes
+    train_genes, _ = split_genes(the_st, random_split)
+    
     # Process chunks
     if dataset == 'mouse':
         process_multiple_chunks(
             the_sc, the_st, train_genes, dataset,
-            MOUSE_CHUNKS_DIR, 'random',
+            MOUSE_CHUNKS_DIR, 'random' if random_split else 'marker',
             PREP_CONFIGS[dataset]['num_chunks']
         )
     else:
-        process_multiple_chunks(
+        process_single_chunk(
             the_sc, the_st, train_genes, dataset,
-            CANCER_CHUNKS_DIR, 'random',
-            PREP_CONFIGS[dataset]['num_chunks']
+            CANCER_CHUNKS_DIR, 'random' if random_split else 'marker'
         )
+    
     # Project genes
-    project_genes(dataset, 'random')
+    project_genes(dataset, 'random' if random_split else 'marker')
 
 def load_mouse_data() -> Tuple[sc.AnnData, sc.AnnData]:
-    """Load mouse data for Tangram alignment (match all_tangram_final.py logic)"""
-    xen_dir = MOUSE_XEN_DIR
-    # Load spatial data
-    the_st = sc.read_10x_h5(os.path.join(xen_dir, 'cell_feature_matrix.h5'))
+    """Load mouse data for Tangram alignment"""
     # Load single-cell data
-    the_sc = sc.read_h5ad(os.path.join(xen_dir, 'mouse_pup.h5ad'))
-    the_sc = the_sc[the_sc.obs['day']=='P0']
-    the_sc.var = the_sc.var.set_index('gene_short_name')
-    celltype_metadata = pd.read_pickle(os.path.join(xen_dir, 'mouse_metadata.pkl'))
-    new_index = [q[:-5] for q in the_sc.obs.index]
-    the_sc.obs.index = new_index
-    the_sc.obs = celltype_metadata.loc[the_sc.obs.index]
-    the_sc = the_sc[the_sc.obs['embryo_sex']=='M']
-    the_sc = the_sc[:,~the_sc.var.index.duplicated(keep='first')]
+    the_sc = sc.read_h5ad(os.path.join(MOUSE_XEN_DIR, 'Xenium_V1_mouse_pup_sc_data.h5ad'))
+    
+    # Load spatial data
+    the_st = sc.read_h5ad(os.path.join(MOUSE_XEN_DIR, 'Xenium_V1_mouse_pup_st_data.h5ad'))
+    
     return the_sc, the_st
 
 def load_cancer_data() -> Tuple[sc.AnnData, sc.AnnData]:
-    """Load cancer data for Tangram alignment (match all_tangram_final.py logic)"""
-    xen_dir = CANCER_XEN_DIR
-    the_st = sc.read_h5ad(os.path.join(xen_dir, 'xenium_breast.h5ad'))
-    the_sc = sc.read_h5ad('/storage/ccomiter/htapp_supervise/new_schaf_experiment_scripts/more_data/xenium_single_cell.h5')
+    """Load cancer data for Tangram alignment"""
+    # Load single-cell data
+    the_sc = sc.read_h5ad(os.path.join(CANCER_XEN_DIR, 'xenium_sc_data.h5ad'))
+    
+    # Load spatial data
+    the_st = sc.read_h5ad(os.path.join(CANCER_XEN_DIR, 'xenium_st_data.h5ad'))
+    
     return the_sc, the_st
 
 def preprocess_data(the_sc: sc.AnnData, the_st: sc.AnnData) -> Tuple[sc.AnnData, sc.AnnData]:
     """Preprocess data for Tangram alignment"""
     # Process single-cell data
-    sc.pp.filter_cells(the_sc, min_genes=8)
+    sc.pp.filter_cells(the_sc, min_genes=1)
     sc.pp.filter_genes(the_sc, min_cells=1)
     sc.pp.normalize_total(the_sc)
     sc.pp.log1p(the_sc)
     
     # Process spatial data
-    sc.pp.filter_cells(the_st, min_genes=8)
+    sc.pp.filter_cells(the_st, min_genes=1)
     sc.pp.filter_genes(the_st, min_cells=1)
     sc.pp.normalize_total(the_st)
     sc.pp.log1p(the_st)
@@ -2155,11 +2046,19 @@ def preprocess_data(the_sc: sc.AnnData, the_st: sc.AnnData) -> Tuple[sc.AnnData,
     return the_sc, the_st
 
 def split_genes(the_st: sc.AnnData, random_split: bool) -> Tuple[Set[str], Set[str]]:
-    all_genes = list(the_st.var.index)
-    random.shuffle(all_genes)
-    split_idx = len(all_genes) // 2
-    train_genes = set(all_genes[:split_idx])
-    test_genes = set(all_genes[split_idx:]) 
+    """Split genes for Tangram alignment"""
+    if random_split:
+        # Random split
+        all_genes = list(the_st.var.index)
+        random.shuffle(all_genes)
+        split_idx = len(all_genes) // 2
+        train_genes = set(all_genes[:split_idx])
+        test_genes = set(all_genes[split_idx:])
+    else:
+        # Marker-based split
+        train_genes = set(MARKER_GENES['mouse' if 'mouse' in the_st.uns['dataset'] else 'cancer'])
+        test_genes = set(the_st.var.index) - train_genes
+    
     return train_genes, test_genes
 
 def process_single_chunk(the_sc: sc.AnnData, 
@@ -2241,7 +2140,7 @@ def project_genes(dataset: str, gene_split: str) -> None:
     mappings = []
     for i in range(n_chunks):
         mapping_path = os.path.join(chunks_dir, f'{dataset}_{gene_split}_chunk_{i}.h5ad')
-        mappings.append(tg.project_genes(sc.read_h5ad(mapping_path), the_sc))
+        mappings.append(sc.read_h5ad(mapping_path))
     
     # Combine mappings if necessary
     if len(mappings) > 1:
@@ -2249,8 +2148,8 @@ def project_genes(dataset: str, gene_split: str) -> None:
     else:
         combined_mapping = mappings[0]
     
-    # # Project genes
-    # projected = tg.project_genes(combined_mapping, the_sc)
+    # Project genes
+    projected = tg.project_genes(combined_mapping, the_sc)
     
     # Save results
     output_dir = PREP_CONFIGS[dataset]['output_dir']
@@ -2263,64 +2162,64 @@ def project_genes(dataset: str, gene_split: str) -> None:
 #######################################################################################
 
 def main():
-    """Main training and inference function."""
+    """Main training function."""
     # Parse arguments
     args = parse_args()
+    
     # Set up training environment
     device = setup_device(args['gpu'])
     setup_wandb(args)
+    
     # Get scenario configuration
     config = SCENARIO_CONFIGS[args['scenario']]
-    if args.get('mode', 'train') == 'train':
-        if config['is_paired']:
-            prepare_paired_data(args['scenario'], force_recompute=False)
-            he_image, fold_to_trans, mu, sigma = load_data_for_scenario(config, args)
-            train_loader, val_loader = prepare_paired_dataloaders(
-                fold_to_trans, args['fold'] if config['use_hold_out'] else None,
-                he_image, args, mu, sigma
+    
+    if config['is_paired']:
+        # For paired scenarios (mouse and cancer), prepare data first
+        prepare_paired_data(args['scenario'], force_recompute=False)
+        
+        # Load prepared data
+        he_image, fold_to_trans, mu, sigma = load_data_for_scenario(config, args)
+        
+        # Continue with paired training setup and execution
+        train_loader, val_loader = prepare_paired_dataloaders(
+            fold_to_trans, args['fold'] if config['use_hold_out'] else None,
+            he_image, args, mu, sigma
+        )
+        
+        model, optimizer = setup_paired_training(config, args)
+        model = model.to(device)
+        
+        criterion = nn.MSELoss()
+        train_losses, val_losses = train_paired_model(
+            model, train_loader, val_loader, optimizer, criterion, device, args
+        )
+        
+        if args['save_model']:
+            final_path = os.path.join(
+                config['model_dir'],
+                f"{config['model_name_prefix']}_{args['fold']}_final.pt"
             )
-            model, optimizer = setup_paired_training(config, args)
-            model = model.to(device)
-            criterion = nn.MSELoss()
-            train_losses, val_losses = train_paired_model(
-                model, train_loader, val_loader, optimizer, criterion, device, args
-            )
-            if args['save_model']:
-                final_path = os.path.join(
-                    config['model_dir'],
-                    f"{config['model_name_prefix']}_{args['fold']}_final.pt"
+            torch.save(model.state_dict(), final_path)
+            
+    else:
+        # For unpaired scenarios (htapp, placenta, lung_cancer), proceed as before
+        hist_embeddings, sc_embeddings = load_data_for_scenario(config, args)
+        hist_loader, sc_loader = prepare_unpaired_dataloaders(
+            hist_embeddings, sc_embeddings, args
+        )
+        
+        models, optimizers = setup_unpaired_training(args)
+        metrics_history, best_models = train_unpaired_model(
+            hist_loader, sc_loader, models, optimizers, device, args
+        )
+        
+        if args['save_model']:
+            for name, state_dict in best_models.items():
+                model_path = os.path.join(
+                    config['save_models_dir'],
+                    f"{name}_{args['fold']}_final.pt"
                 )
-                torch.save(model.state_dict(), final_path)
-        else:
-            # For unpaired scenarios, use generate_embeddings
-            generate_embeddings(args['scenario'], config)
-            hist_embeddings, sc_embeddings = load_data_for_scenario(config, args)
-            hist_loader, sc_loader = prepare_unpaired_dataloaders(
-                hist_embeddings, sc_embeddings, args
-            )
-            models, optimizers = setup_unpaired_training(args)
-            metrics_history, best_models = train_unpaired_model(
-                hist_loader, sc_loader, models, optimizers, device, args
-            )
-            if args['save_model']:
-                for name, state_dict in best_models.items():
-                    model_path = os.path.join(
-                        config['save_models_dir'],
-                        f"{name}_{args['fold']}_final.pt"
-                    )
-                    torch.save(state_dict, model_path)
-    elif args.get('mode', 'train') == 'inference':
-        # Inference logic (patterned after old_schaf_inference.py)
-        if args['scenario'] in ['mouse', 'cancer_in_sample', 'cancer_whole_sample']:
-            run_image_based_inference(args)
-        elif args['scenario'] == 'htapp':
-            run_htapp_inference(args)
-        elif args['scenario'] == 'placenta':
-            run_placenta_inference(args)
-        elif args['scenario'] == 'lung_cancer':
-            run_lung_cancer_inference(args)
-        else:
-            print(f"Inference for {args['scenario']} not yet implemented")
+                torch.save(state_dict, model_path)
 
 if __name__ == "__main__":
     main() 
