@@ -154,6 +154,45 @@ SCENARIO_KEYS = {
 }
 
 #######################################################################################
+# Custom User Data Configuration
+# Template paths and settings for user-defined scenarios
+#######################################################################################
+
+# Custom data paths - users should modify these for their own datasets
+CUSTOM_DATA_PATHS = {
+    # Raw data directories
+    'custom_he_images': f"{STORAGE_ROOT}/custom_data/he_images",
+    'custom_sc_data': f"{STORAGE_ROOT}/custom_data/single_cell",
+    'custom_st_data': f"{STORAGE_ROOT}/custom_data/spatial_transcriptomics",
+    
+    # Processed data directories
+    'custom_embeddings': f"{STORAGE_ROOT}/custom_data/embeddings",
+    'custom_chunks': f"{STORAGE_ROOT}/custom_data/chunks",
+    'custom_folds': f"{STORAGE_ROOT}/custom_data/folds",
+    
+    # Output directories
+    'custom_models': f"{PROJECT_ROOT}/data/custom/models",
+    'custom_inferences': f"{PROJECT_ROOT}/data/custom/inferences",
+}
+
+# Template configuration for custom scenarios
+CUSTOM_SCENARIO_TEMPLATE = {
+    'data_dir': CUSTOM_DATA_PATHS['custom_st_data'],
+    'he_path': 'he_image.tif',  # Filename of H&E image in data_dir
+    'model_dir': CUSTOM_DATA_PATHS['custom_models'],
+    'output_dir': CUSTOM_DATA_PATHS['custom_inferences'],
+    'proj_dir': CUSTOM_DATA_PATHS['custom_folds'],
+    'stage1_suffix': 'st.h5ad',
+    'stage2_suffix': 'tang_proj.h5ad',
+    'use_hold_out': True,
+    'model_name_prefix': 'custom',
+    'is_paired': True,  # Set to False for unpaired scenarios
+    'tile_radius': 180,
+    'needs_transform': False,  # Set to True if coordinate transformation needed
+    'transform_file': None,  # Filename of transformation matrix if needed
+}
+
+#######################################################################################
 # File Name Patterns and Extensions
 # Common file naming conventions used throughout SCHAF
 #######################################################################################
@@ -239,6 +278,9 @@ def create_output_directories():
     # Add all model paths
     directories_to_create.extend(MODEL_PATHS.values())
     
+    # Add custom data paths
+    directories_to_create.extend(CUSTOM_DATA_PATHS.values())
+    
     # Add embedding directories (relative paths will be created in current directory)
     for embed_dir in EMBEDDING_PATHS.values():
         if not os.path.isabs(embed_dir):
@@ -259,6 +301,54 @@ def create_output_directories():
         'created': created_dirs,
         'failed': failed_dirs
     }
+
+def create_custom_scenario_config(scenario_name: str, 
+                                 data_dir: str,
+                                 he_image_filename: str,
+                                 is_paired: bool = True,
+                                 tile_radius: int = 180,
+                                 **kwargs) -> dict:
+    """
+    Create a custom scenario configuration for user data.
+    
+    Args:
+        scenario_name (str): Name for the custom scenario
+        data_dir (str): Path to the directory containing your data
+        he_image_filename (str): Filename of the H&E image
+        is_paired (bool): Whether this is a paired (with spatial transcriptomics) scenario
+        tile_radius (int): Radius of image tiles to extract
+        **kwargs: Additional configuration options
+        
+    Returns:
+        dict: Configuration dictionary for the custom scenario
+        
+    Example:
+        config = create_custom_scenario_config(
+            scenario_name="my_dataset",
+            data_dir="/path/to/my/data",
+            he_image_filename="my_he_image.tif",
+            is_paired=True,
+            tile_radius=200
+        )
+    """
+    config = CUSTOM_SCENARIO_TEMPLATE.copy()
+    
+    # Update with user-provided values
+    config.update({
+        'data_dir': data_dir,
+        'he_path': he_image_filename,
+        'model_dir': f"{PROJECT_ROOT}/data/{scenario_name}/models",
+        'output_dir': f"{PROJECT_ROOT}/data/{scenario_name}/inferences",
+        'proj_dir': f"{PROJECT_ROOT}/data/{scenario_name}/folds",
+        'model_name_prefix': scenario_name,
+        'is_paired': is_paired,
+        'tile_radius': tile_radius,
+    })
+    
+    # Update with any additional kwargs
+    config.update(kwargs)
+    
+    return config
 
 #######################################################################################
 # User Configuration Instructions

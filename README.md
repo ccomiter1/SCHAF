@@ -16,10 +16,13 @@ conda activate final_schaf
 
 The main SCHAF method supports both training and inference modes for various scenarios:
 
+#### Pre-defined Scenarios
+
 ```bash
-# Training mode example
+# Training mode example for pre-defined datasets
 python schaf_method.py --mode train \
-    --scenario [mouse|cancer|htapp|placenta|lung] \
+    --scenario [mouse|cancer_in_sample|cancer_whole_sample|htapp|placenta|lung_cancer] \
+    --fold [fold_id] \
     --gpu 0 \
     --batch-size 32 \
     --workers 6 \
@@ -29,17 +32,61 @@ python schaf_method.py --mode train \
     --use-wandb \
     --save-model
 
-# Inference mode example
+# Inference mode example for pre-defined datasets
 python schaf_method.py --mode inference \
-    --scenario [mouse|cancer|htapp|placenta|lung] \
+    --scenario [mouse|cancer_in_sample|cancer_whole_sample|htapp|placenta|lung_cancer] \
+    --fold [fold_id] \
     --gpu 0 \
     --batch-size 32 \
     --workers 6
 ```
 
-Key parameters:
+#### Custom User Data
+
+For your own H&E images and scRNA-seq/spatial transcriptomics data:
+
+```bash
+# Paired training (with spatial transcriptomics data)
+python schaf_method.py --mode train \
+    --scenario custom \
+    --custom-data-dir /path/to/your/data \
+    --custom-he-image your_he_image.tif \
+    --custom-sc-file your_single_cell_data.h5ad \
+    --custom-st-file your_spatial_data.h5ad \
+    --custom-paired \
+    --custom-scenario-name my_dataset \
+    --fold 0 \
+    --gpu 0 \
+    --batch-size 32 \
+    --num-epochs 100
+
+# Unpaired training (scRNA-seq only)
+python schaf_method.py --mode train \
+    --scenario custom \
+    --custom-data-dir /path/to/your/data \
+    --custom-he-image your_he_image.tif \
+    --custom-sc-file your_single_cell_data.h5ad \
+    --custom-scenario-name my_dataset \
+    --fold 0 \
+    --gpu 0 \
+    --batch-size 32 \
+    --num-epochs 100
+
+# Custom inference
+python schaf_method.py --mode inference \
+    --scenario custom \
+    --custom-data-dir /path/to/your/data \
+    --custom-he-image your_he_image.tif \
+    --custom-scenario-name my_dataset \
+    --fold 0 \
+    --gpu 0
+```
+
+#### Key Parameters
+
 - `--mode`: Choose between 'train' or 'inference'
-- `--scenario`: Dataset scenario to use
+- `--scenario`: Dataset scenario to use (or 'custom' for your own data)
+- `--fold`: Fold/key to use as test set
 - `--gpu`: GPU device ID to use
 - `--batch-size`: Batch size for training/inference
 - `--workers`: Number of data loading worker processes
@@ -48,6 +95,15 @@ Key parameters:
 - `--tile-radius`: Radius of image tiles
 - `--use-wandb`: Enable Weights & Biases logging
 - `--save-model`: Save model checkpoints during training
+
+#### Custom Data Parameters
+
+- `--custom-data-dir`: Directory containing your data files
+- `--custom-he-image`: Filename of your H&E image
+- `--custom-sc-file`: Filename of your single-cell data (.h5ad format)
+- `--custom-st-file`: Filename of your spatial transcriptomics data (.h5ad, for paired scenarios)
+- `--custom-paired`: Use paired training (requires spatial transcriptomics data)
+- `--custom-scenario-name`: Name for your custom scenario (used in output paths)
 
 ### 2. Running Benchmarks (schaf_benchmarking.py)
 
@@ -85,9 +141,74 @@ jupyter lab
 
 ## Data Requirements
 
+### Pre-defined Scenarios
 - For training: Paired H&E images, single-cell RNA sequencing data, and, for Paired SCHAF, spatial transcriptomics data
 - For inference: H&E images only
 - For figure generation: Inference results and ground truth data
+
+### Custom User Data
+
+#### Required Files
+- **H&E Image**: High-resolution histology image (`.tif`, `.png`, `.jpg` formats supported)
+- **Single-cell Data**: AnnData object (`.h5ad`) containing single-cell RNA sequencing data
+- **Spatial Transcriptomics Data** (for paired training): AnnData object (`.h5ad`) containing spatial transcriptomics data
+
+#### Data Format Requirements
+
+**Single-cell Data (`.h5ad`)**:
+- `adata.X`: Gene expression matrix (cells × genes)
+- `adata.var.index`: Gene names/symbols
+- `adata.obs.index`: Cell barcodes/IDs
+- Optional: `adata.obs['cluster']` for cell type annotations
+
+**Spatial Transcriptomics Data (`.h5ad`)**:
+- `adata.X`: Gene expression matrix (spots × genes)
+- `adata.var.index`: Gene names/symbols (should overlap with single-cell data)
+- `adata.obs.index`: Spot barcodes/IDs
+- **Spatial coordinates** (required, one of):
+  - `adata.obsm['spatial']`: 2D array with x,y coordinates
+  - `adata.obs['x']` and `adata.obs['y']`: Separate columns for coordinates
+- Optional: `adata.obs['cluster']` for spot annotations
+
+#### Directory Structure
+```
+your_data_directory/
+├── he_image.tif                    # H&E histology image
+├── single_cell_data.h5ad          # Single-cell RNA-seq data
+└── spatial_data.h5ad              # Spatial transcriptomics data (for paired)
+```
+
+#### Data Validation
+Before training, SCHAF will automatically validate your data format:
+```bash
+# The validation will check:
+# ✓ File existence
+# ✓ Data format compatibility
+# ✓ Gene overlap between datasets
+# ✓ Spatial coordinate availability
+# ✓ Data dimensions and quality
+```
+
+#### Preparing Your Data
+1. **Convert to AnnData format**: Use `scanpy` to convert your data:
+   ```python
+   import scanpy as sc
+   import pandas as pd
+   
+   # For single-cell data
+   adata_sc = sc.read_csv("your_expression_matrix.csv").T
+   adata_sc.var_names_unique()
+   adata_sc.write("single_cell_data.h5ad")
+   
+   # For spatial data with coordinates
+   adata_st = sc.read_csv("spatial_expression.csv").T
+   coordinates = pd.read_csv("spatial_coordinates.csv")
+   adata_st.obsm['spatial'] = coordinates[['x', 'y']].values
+   adata_st.write("spatial_data.h5ad")
+   ```
+
+2. **Ensure gene name consistency**: Gene names should be consistent between datasets
+3. **Check spatial coordinates**: Coordinates should be in pixel units matching the H&E image
 
 ## Citation
 

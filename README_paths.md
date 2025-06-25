@@ -29,10 +29,27 @@ PROJECT_ROOT = f"{STORAGE_ROOT}/schaf_for_revision052424"
 
 Ensure your data is organized as expected. The key datasets needed are:
 
+#### Pre-defined Scenarios
 - **Mouse Xenium data**: Set `DATA_PATHS['mouse_xenium']` to your mouse data location
 - **Cancer Xenium data**: Set `DATA_PATHS['cancer_xenium']` to your cancer data location
 - **Single-cell datasets**: Update paths in `DATA_PATHS` for HTAPP, placenta, and lung cancer SC data
 - **Histology images**: Update paths for histology image datasets
+
+#### Custom User Data
+For your own datasets, update the custom data paths in `CUSTOM_DATA_PATHS`:
+
+```python
+CUSTOM_DATA_PATHS = {
+    'custom_he_images': "/your/path/to/he_images",
+    'custom_sc_data': "/your/path/to/single_cell",
+    'custom_st_data': "/your/path/to/spatial_transcriptomics",
+    'custom_embeddings': "/your/path/to/embeddings",
+    'custom_chunks': "/your/path/to/chunks",
+    'custom_folds': "/your/path/to/folds",
+    'custom_models': "/your/path/to/models",
+    'custom_inferences': "/your/path/to/inferences",
+}
+```
 
 ### 3. Validation
 
@@ -135,4 +152,84 @@ If you encounter issues:
 3. Verify directory permissions
 4. Review the console output for specific error messages
 
-Run `python schaf_paths.py` to see configuration instructions and current path status. 
+Run `python schaf_paths.py` to see configuration instructions and current path status.
+
+## Using Custom Data
+
+SCHAF supports training on your own H&E images and scRNA-seq/spatial transcriptomics data through the custom scenario feature.
+
+### Quick Start with Custom Data
+
+1. **Organize your data**:
+   ```
+   /your/data/directory/
+   ├── he_image.tif
+   ├── single_cell_data.h5ad
+   └── spatial_data.h5ad  # For paired training
+   ```
+
+2. **Update paths** (optional - can also specify via command line):
+   ```python
+   # In schaf_paths.py
+   CUSTOM_DATA_PATHS['custom_st_data'] = "/your/data/directory"
+   ```
+
+3. **Run training**:
+   ```bash
+   python schaf_method.py --mode train \
+       --scenario custom \
+       --custom-data-dir /your/data/directory \
+       --custom-he-image he_image.tif \
+       --custom-sc-file single_cell_data.h5ad \
+       --custom-st-file spatial_data.h5ad \
+       --custom-paired \
+       --fold 0 \
+       --gpu 0
+   ```
+
+### Custom Scenario Configuration
+
+You can also create reusable configurations for your datasets:
+
+```python
+from schaf_paths import create_custom_scenario_config
+
+# Create configuration for your dataset
+my_config = create_custom_scenario_config(
+    scenario_name="my_tissue_dataset",
+    data_dir="/path/to/my/data",
+    he_image_filename="tissue_he.tif",
+    is_paired=True,
+    tile_radius=200
+)
+```
+
+### Data Format Requirements
+
+- **H&E Image**: Any standard image format (`.tif`, `.png`, `.jpg`)
+- **Single-cell Data**: AnnData format (`.h5ad`) with:
+  - `adata.X`: Expression matrix (cells × genes)
+  - `adata.var.index`: Gene names
+  - `adata.obs.index`: Cell IDs
+- **Spatial Data**: AnnData format (`.h5ad`) with:
+  - `adata.X`: Expression matrix (spots × genes)
+  - `adata.obsm['spatial']` or `adata.obs['x']`/`adata.obs['y']`: Coordinates
+  - Gene names matching single-cell data
+
+### Validation
+
+SCHAF automatically validates your custom data before training:
+
+```python
+from schaf_paths import validate_custom_data_format
+
+results = validate_custom_data_format(
+    "/path/to/data",
+    "he_image.tif",
+    "sc_data.h5ad",
+    "st_data.h5ad"
+)
+
+for message in results['messages']:
+    print(message)
+``` 

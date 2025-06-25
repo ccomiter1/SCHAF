@@ -763,12 +763,17 @@ def process_and_save_embeddings(image, xs, ys, name, embedding_maker, save_dir, 
     os.makedirs(save_dir, exist_ok=True)
     np.save(f'{save_dir}/{name}.npy', np.stack(embeds))
 
-def prepare_paired_data(scenario: str, force_recompute: bool = False) -> None:
+def prepare_paired_data(scenario: str, force_recompute: bool = False, custom_config: dict = None) -> None:
     """
-    Prepare data for paired training scenarios (mouse and cancer).
+    Prepare data for paired training scenarios (mouse, cancer, and custom).
     This combines the functionality from schaf_before_training.py.
     """
-    config = PREP_CONFIGS[scenario]
+    if scenario == 'custom':
+        if not custom_config:
+            raise ValueError("custom_config is required for custom scenarios")
+        config = custom_config
+    else:
+        config = PREP_CONFIGS[scenario]
     
     # Check if data already exists and force_recompute is False
     if not force_recompute:
@@ -784,11 +789,16 @@ def prepare_paired_data(scenario: str, force_recompute: bool = False) -> None:
     print(f"Preparing {scenario} data...")
     
     # Run Tangram processing
-    train_genes = run_tangram(scenario, random_split=True)
+    if scenario == 'custom':
+        train_genes = run_tangram(scenario, random_split=True, custom_config=custom_config)
+    else:
+        train_genes = run_tangram(scenario, random_split=True)
     
     # Load and prepare data
     if scenario == 'mouse':
         st_data, metadata = load_mouse_prep_data(config, train_genes)
+    elif scenario == 'custom':
+        st_data, metadata = load_custom_prep_data(config, train_genes)
     else:
         st_data, metadata = load_cancer_prep_data(config, train_genes)
     
@@ -901,6 +911,55 @@ def load_cancer_prep_data(config: Dict, train_genes: Set[str]) -> Tuple[sc.AnnDa
     del st_data.var['gene_ids']
     del st_data.var['feature_types']
     del st_data.var['genome']
+    
+    return st_data[::,train_genes], metadata
+
+def load_custom_prep_data(config: Dict, train_genes: Set[str]) -> Tuple[sc.AnnData, pd.DataFrame]:
+    """Load and preprocess custom user data for training preparation."""
+    # Load spatial transcriptomics data
+    st_data = sc.read_h5ad(os.path.join(config['data_dir'], config['st_file']))
+    
+    # Ensure spatial coordinates are available
+    if 'spatial' in st_data.obsm:
+        xs = st_data.obsm['spatial'][:, 0].astype(int)
+        ys = st_data.obsm['spatial'][:, 1].astype(int)
+    elif 'x' in st_data.obs and 'y' in st_data.obs:
+        xs = st_data.obs['x'].astype(int)
+        ys = st_data.obs['y'].astype(int)
+    else:
+        raise ValueError("Spatial coordinates not found. Expected in obsm['spatial'] or obs['x']/obs['y']")
+    
+    # Create metadata
+    metadata = pd.DataFrame(index=st_data.obs.index)
+    metadata['x'] = xs
+    metadata['y'] = ys
+    
+    # Add zone information (simple quadrant-based zoning)
+    x_median = np.median(xs)
+    y_median = np.median(ys)
+    
+    zones = []
+    for x, y in zip(xs, ys):
+        if x < x_median and y < y_median:
+            zone = 0
+        elif x >= x_median and y >= y_median:
+            zone = 1
+        elif x < x_median and y >= y_median:
+            zone = 2
+        else:
+            zone = 3
+        zones.append(zone)
+    
+    metadata['zone'] = zones
+    
+    # Add clustering information if available
+    if 'cluster' in st_data.obs:
+        metadata['broad_clusters'] = st_data.obs['cluster']
+        metadata['fine_clusters'] = st_data.obs['cluster']
+    else:
+        # Create simple clustering based on spatial location
+        metadata['broad_clusters'] = metadata['zone']
+        metadata['fine_clusters'] = metadata['zone']
     
     return st_data[::,train_genes], metadata
 
@@ -1611,13 +1670,28 @@ def parse_args() -> dict:
     )
     
     # Required arguments
+    scenario_choices = list(SCENARIO_CONFIGS.keys()) + ['custom']
     parser.add_argument('--scenario', type=str, required=True,
-                      choices=list(SCENARIO_CONFIGS.keys()),
-                      help='Training scenario to use')
+                      choices=scenario_choices,
+                      help='Training scenario to use (or "custom" for user-defined data)')
     parser.add_argument('--fold', type=str, required=True,
                       help='Fold/key to use as test set')
     parser.add_argument('--gpu', type=int, required=True,
                       help='GPU device to use')
+    
+    # Custom scenario arguments
+    parser.add_argument('--custom-data-dir', type=str,
+                      help='Directory containing custom data (required for custom scenario)')
+    parser.add_argument('--custom-he-image', type=str,
+                      help='Filename of H&E image in custom data directory')
+    parser.add_argument('--custom-sc-file', type=str,
+                      help='Filename of single-cell data file (.h5ad)')
+    parser.add_argument('--custom-st-file', type=str,
+                      help='Filename of spatial transcriptomics data file (.h5ad, for paired scenarios)')
+    parser.add_argument('--custom-paired', action='store_true',
+                      help='Use paired training (requires spatial transcriptomics data)')
+    parser.add_argument('--custom-scenario-name', type=str, default='custom',
+                      help='Name for the custom scenario (used in output paths)')
     
     # Optional arguments with defaults
     parser.add_argument('--batch_size', type=int, default=DEFAULT_BATCH_SIZE,
@@ -1632,6 +1706,8 @@ def parse_args() -> dict:
                       help='Test set size (fraction)')
     parser.add_argument('--tile_radius', type=int, default=DEFAULT_TILE_RADIUS,
                       help='Radius of image tiles in pixels')
+    parser.add_argument('--mode', type=str, choices=['train', 'inference'], default='train',
+                      help='Mode: train or inference')
     
     # Flag arguments
     parser.add_argument('--use_wandb', action='store_true',
@@ -2125,20 +2201,31 @@ def normalize_embeddings(hist_embeddings: Dict[str, np.ndarray],
     
     return hist_embeddings[key], sc_embeddings[key]
 
-def run_tangram(dataset: str, random_split: bool = True) -> None:
+def run_tangram(dataset: str, random_split: bool = True, custom_config: dict = None) -> None:
     """Run Tangram alignment for a specific dataset (random split only)"""
     # Load data
     if dataset == 'mouse':
         the_sc, the_st = load_mouse_data()
+    elif dataset == 'custom':
+        if not custom_config:
+            raise ValueError("custom_config is required for custom datasets")
+        the_sc, the_st = load_custom_data(
+            custom_config['data_dir'],
+            custom_config['sc_file'],
+            custom_config.get('st_file')
+        )
     else:
         the_sc, the_st = load_cancer_data()
+    
     # Preprocess data
     the_sc, the_st = preprocess_data(the_sc, the_st)
+    
     # Only random split supported
     all_genes = list(the_st.var.index)
     random.shuffle(all_genes)
     split_idx = len(all_genes) // 2
     train_genes = set(all_genes[:split_idx])
+    
     # Process chunks
     if dataset == 'mouse':
         process_multiple_chunks(
@@ -2146,14 +2233,23 @@ def run_tangram(dataset: str, random_split: bool = True) -> None:
             MOUSE_CHUNKS_DIR, 'random',
             PREP_CONFIGS[dataset]['num_chunks']
         )
+    elif dataset == 'custom':
+        # For custom datasets, use a smaller number of chunks
+        chunks_dir = custom_config.get('chunks_dir', CUSTOM_DATA_PATHS['custom_chunks'])
+        os.makedirs(chunks_dir, exist_ok=True)
+        process_multiple_chunks(
+            the_sc, the_st, train_genes, dataset,
+            chunks_dir, 'random', 4  # Default to 4 chunks for custom data
+        )
     else:
         process_multiple_chunks(
             the_sc, the_st, train_genes, dataset,
             CANCER_CHUNKS_DIR, 'random',
             PREP_CONFIGS[dataset]['num_chunks']
         )
+    
     # Project genes
-    project_genes(dataset, 'random')
+    project_genes(dataset, 'random', custom_config)
     return train_genes
 
 def load_mouse_data() -> Tuple[sc.AnnData, sc.AnnData]:
@@ -2179,6 +2275,170 @@ def load_cancer_data() -> Tuple[sc.AnnData, sc.AnnData]:
     the_st = sc.read_h5ad(os.path.join(xen_dir, 'xenium_breast.h5ad'))
     the_sc = sc.read_h5ad(os.path.join(xen_dir, 'xenium_single_cell.h5'))
     return the_sc, the_st
+
+def load_custom_data(data_dir: str, sc_file: str, st_file: str = None) -> Tuple[sc.AnnData, sc.AnnData]:
+    """
+    Load custom user data for Tangram alignment.
+    
+    Args:
+        data_dir (str): Directory containing the data files
+        sc_file (str): Filename of single-cell data (.h5ad)
+        st_file (str, optional): Filename of spatial transcriptomics data (.h5ad)
+        
+    Returns:
+        Tuple[sc.AnnData, sc.AnnData]: Single-cell and spatial transcriptomics data
+    """
+    # Load single-cell data
+    the_sc = sc.read_h5ad(os.path.join(data_dir, sc_file))
+    
+    # Load spatial transcriptomics data if provided
+    if st_file:
+        the_st = sc.read_h5ad(os.path.join(data_dir, st_file))
+    else:
+        # Create dummy spatial data for unpaired scenarios
+        the_st = the_sc.copy()
+        print("Warning: No spatial transcriptomics data provided. Using single-cell data as template.")
+    
+    return the_sc, the_st
+
+def validate_custom_data_format(data_dir: str, he_image: str, sc_file: str, st_file: str = None) -> dict:
+    """
+    Validate that custom data files exist and have the expected format.
+    
+    Args:
+        data_dir (str): Directory containing the data files
+        he_image (str): Filename of H&E image
+        sc_file (str): Filename of single-cell data
+        st_file (str, optional): Filename of spatial transcriptomics data
+        
+    Returns:
+        dict: Validation results with status and messages
+    """
+    validation_results = {
+        'valid': True,
+        'messages': [],
+        'files_found': {},
+        'data_info': {}
+    }
+    
+    # Check if data directory exists
+    if not os.path.exists(data_dir):
+        validation_results['valid'] = False
+        validation_results['messages'].append(f"Data directory not found: {data_dir}")
+        return validation_results
+    
+    # Check H&E image
+    he_path = os.path.join(data_dir, he_image)
+    if os.path.exists(he_path):
+        validation_results['files_found']['he_image'] = True
+        validation_results['messages'].append(f"✓ H&E image found: {he_image}")
+    else:
+        validation_results['valid'] = False
+        validation_results['files_found']['he_image'] = False
+        validation_results['messages'].append(f"✗ H&E image not found: {he_image}")
+    
+    # Check single-cell data
+    sc_path = os.path.join(data_dir, sc_file)
+    if os.path.exists(sc_path):
+        validation_results['files_found']['sc_data'] = True
+        validation_results['messages'].append(f"✓ Single-cell data found: {sc_file}")
+        
+        try:
+            # Load and inspect single-cell data
+            sc_data = sc.read_h5ad(sc_path)
+            validation_results['data_info']['sc_cells'] = sc_data.shape[0]
+            validation_results['data_info']['sc_genes'] = sc_data.shape[1]
+            validation_results['messages'].append(f"  - Single-cell data: {sc_data.shape[0]} cells, {sc_data.shape[1]} genes")
+        except Exception as e:
+            validation_results['valid'] = False
+            validation_results['messages'].append(f"✗ Error reading single-cell data: {str(e)}")
+    else:
+        validation_results['valid'] = False
+        validation_results['files_found']['sc_data'] = False
+        validation_results['messages'].append(f"✗ Single-cell data not found: {sc_file}")
+    
+    # Check spatial transcriptomics data if provided
+    if st_file:
+        st_path = os.path.join(data_dir, st_file)
+        if os.path.exists(st_path):
+            validation_results['files_found']['st_data'] = True
+            validation_results['messages'].append(f"✓ Spatial transcriptomics data found: {st_file}")
+            
+            try:
+                # Load and inspect spatial data
+                st_data = sc.read_h5ad(st_path)
+                validation_results['data_info']['st_spots'] = st_data.shape[0]
+                validation_results['data_info']['st_genes'] = st_data.shape[1]
+                validation_results['messages'].append(f"  - Spatial data: {st_data.shape[0]} spots, {st_data.shape[1]} genes")
+                
+                # Check if spatial coordinates are available
+                if 'spatial' in st_data.obsm:
+                    validation_results['messages'].append("  - Spatial coordinates found in obsm['spatial']")
+                elif 'x' in st_data.obs and 'y' in st_data.obs:
+                    validation_results['messages'].append("  - Spatial coordinates found in obs['x'] and obs['y']")
+                else:
+                    validation_results['messages'].append("  - Warning: No spatial coordinates found. Expected in obsm['spatial'] or obs['x']/obs['y']")
+                    
+            except Exception as e:
+                validation_results['valid'] = False
+                validation_results['messages'].append(f"✗ Error reading spatial transcriptomics data: {str(e)}")
+        else:
+            validation_results['valid'] = False
+            validation_results['files_found']['st_data'] = False
+            validation_results['messages'].append(f"✗ Spatial transcriptomics data not found: {st_file}")
+    
+    return validation_results
+
+def setup_custom_scenario(args: dict) -> dict:
+    """
+    Set up configuration for a custom user scenario.
+    
+    Args:
+        args (dict): Parsed command line arguments
+        
+    Returns:
+        dict: Custom scenario configuration
+    """
+    # Validate required arguments for custom scenario
+    if not args.get('custom_data_dir'):
+        raise ValueError("--custom-data-dir is required for custom scenarios")
+    if not args.get('custom_he_image'):
+        raise ValueError("--custom-he-image is required for custom scenarios")
+    if not args.get('custom_sc_file'):
+        raise ValueError("--custom-sc-file is required for custom scenarios")
+    
+    # Validate data format
+    validation = validate_custom_data_format(
+        args['custom_data_dir'],
+        args['custom_he_image'],
+        args['custom_sc_file'],
+        args.get('custom_st_file')
+    )
+    
+    print("Custom data validation results:")
+    for message in validation['messages']:
+        print(f"  {message}")
+    
+    if not validation['valid']:
+        raise ValueError("Custom data validation failed. Please check the error messages above.")
+    
+    # Create custom scenario configuration
+    config = create_custom_scenario_config(
+        scenario_name=args.get('custom_scenario_name', 'custom'),
+        data_dir=args['custom_data_dir'],
+        he_image_filename=args['custom_he_image'],
+        is_paired=args.get('custom_paired', False),
+        tile_radius=args.get('tile_radius', DEFAULT_TILE_RADIUS)
+    )
+    
+    # Add custom-specific settings
+    config.update({
+        'sc_file': args['custom_sc_file'],
+        'st_file': args.get('custom_st_file'),
+        'data_info': validation['data_info']
+    })
+    
+    return config
 
 def preprocess_data(the_sc: sc.AnnData, the_st: sc.AnnData) -> Tuple[sc.AnnData, sc.AnnData]:
     """Preprocess data for Tangram alignment"""
@@ -2265,23 +2525,40 @@ def process_multiple_chunks(the_sc: sc.AnnData,
         output_path = os.path.join(chunks_dir, f'{dataset}_{split_type}_chunk_{i}.h5ad')
         ad_map.write(output_path)
 
-def project_genes(dataset: str, gene_split: str) -> None:
+def project_genes(dataset: str, gene_split: str, custom_config: dict = None) -> None:
     """Project genes after Tangram alignment"""
     # Load original data
     if dataset == 'mouse':
         the_sc, the_st = load_mouse_data()
         chunks_dir = MOUSE_CHUNKS_DIR
         n_chunks = PREP_CONFIGS[dataset]['num_chunks']
+        output_dir = PREP_CONFIGS[dataset]['output_dir']
+    elif dataset == 'custom':
+        if not custom_config:
+            raise ValueError("custom_config is required for custom datasets")
+        the_sc, the_st = load_custom_data(
+            custom_config['data_dir'],
+            custom_config['sc_file'],
+            custom_config.get('st_file')
+        )
+        chunks_dir = custom_config.get('chunks_dir', CUSTOM_DATA_PATHS['custom_chunks'])
+        n_chunks = 4  # Default for custom data
+        output_dir = custom_config['proj_dir']
     else:
         the_sc, the_st = load_cancer_data()
         chunks_dir = CANCER_CHUNKS_DIR
         n_chunks = 1
+        output_dir = PREP_CONFIGS[dataset]['output_dir']
     
     # Load mapping results
     mappings = []
     for i in range(n_chunks):
         mapping_path = os.path.join(chunks_dir, f'{dataset}_{gene_split}_chunk_{i}.h5ad')
-        mappings.append(tg.project_genes(sc.read_h5ad(mapping_path), the_sc))
+        if os.path.exists(mapping_path):
+            mappings.append(tg.project_genes(sc.read_h5ad(mapping_path), the_sc))
+    
+    if not mappings:
+        raise ValueError(f"No mapping files found in {chunks_dir}")
     
     # Combine mappings if necessary
     if len(mappings) > 1:
@@ -2289,8 +2566,8 @@ def project_genes(dataset: str, gene_split: str) -> None:
     else:
         combined_mapping = mappings[0]
     
-    # # Project genes
-    # projected = tg.project_genes(combined_mapping, the_sc)
+    # Project genes
+    projected = tg.project_genes(combined_mapping, the_sc)
     
     # Save results
     output_dir = PREP_CONFIGS[dataset]['output_dir']
@@ -2306,15 +2583,25 @@ def main():
     """Main training and inference function."""
     # Parse arguments
     args = parse_args()
+    
     # Set up training environment
     device = setup_device(args['gpu'])
     setup_wandb(args)
+    
     # Get scenario configuration
-    config = SCENARIO_CONFIGS[args['scenario']]
+    if args['scenario'] == 'custom':
+        config = setup_custom_scenario(args)
+        print(f"Using custom scenario: {config}")
+    else:
+        config = SCENARIO_CONFIGS[args['scenario']]
+    
     if args.get('mode', 'train') == 'train':
         if config['is_paired']:
             # stage 1
-            prepare_paired_data(args['scenario'], force_recompute=False)
+            if args['scenario'] == 'custom':
+                prepare_paired_data(args['scenario'], force_recompute=False, custom_config=config)
+            else:
+                prepare_paired_data(args['scenario'], force_recompute=False)
             he_image, fold_to_trans, mu, sigma = load_data_for_scenario(config, args)
             train_loader, val_loader = prepare_paired_dataloaders(
                 fold_to_trans, args['fold'] if config['use_hold_out'] else None,
