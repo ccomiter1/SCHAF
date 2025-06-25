@@ -1,10 +1,10 @@
 # SCHAF: Single-Cell Histology Analysis Framework
 
-SCHAF is a framework for inferring single-cell RNA sequencing data from histology images, enabling spatial gene expression prediction from H&E images.
+SCHAF is a framework for inferring single-cell resolution transcriptomic data from histology images, enabling gene expression prediction from H&E images.
 
 ## Installation
 
-1. Create and activate the conda environment:
+1. After having mamba and conda installed, create and activate the conda environment. This should take minutes.
 ```bash
 mamba env create -f schaf_environment.yml
 conda activate final_schaf
@@ -81,17 +81,12 @@ The Jupyter notebook `schaf_figures.ipynb` contains code to generate benchmark c
 jupyter lab
 ```
 
-3. The notebook will generate four main benchmark comparison figures:
-   - Cell type accuracy comparison (`supp2_bottom.pdf`)
-   - Cell type accuracy ablation study (`celltype_ablation_paired.png`)
-   - Full gene correlation distributions (`dists_benchmarks_paired.png`)
-   - Ablation gene correlation distributions (`dists_ablation_paired.png`)
+3. The notebook will generate the figures seen in the below-linked SCHAF study.
 
 ## Data Requirements
 
-- For training: Paired H&E images and single-cell RNA sequencing data
+- For training: Paired H&E images, single-cell RNA sequencing data, and, for Paired SCHAF, spatial transcriptomics data
 - For inference: H&E images only
-- For benchmarking: Ground truth data for comparison
 - For figure generation: Inference results and ground truth data
 
 ## Citation
