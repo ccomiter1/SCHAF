@@ -1,5 +1,7 @@
 name: final_schaf
 channels:
+  - pytorch
+  - nvidia
   - conda-forge
   - defaults
 dependencies:
@@ -10,7 +12,8 @@ dependencies:
   - anndata
   - pytorch
   - torchvision
-  - cudatoolkit=11.8  # For GPU support, adjust if your GPU needs a different version
+  - torchtext
+  - pytorch-cuda=12.1
   - scikit-learn
   - tqdm
   - matplotlib
@@ -27,3 +30,4 @@ dependencies:
       - scgpt
       - timm
       - einops
+      - ipython

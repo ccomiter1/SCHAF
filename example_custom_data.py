@@ -161,12 +161,12 @@ python schaf_method.py --mode train \\
     --custom-st-file spatial_data.h5ad \\
     --custom-paired \\
     --custom-scenario-name my_tissue_example \\
-    --fold 0 \\
+    --fold 1 \\
     --gpu 0 \\
-    --batch-size 32 \\
-    --num-epochs 50 \\
+    --batch_size 32 \\
+    --num_epochs 50 \\
     --lr 0.001 \\
-    --save-model
+    --save_model
 """)
     
     print("2. Unpaired training (single-cell only):")
@@ -177,10 +177,10 @@ python schaf_method.py --mode train \\
     --custom-he-image he_image.tif \\
     --custom-sc-file single_cell_data.h5ad \\
     --custom-scenario-name my_tissue_example \\
-    --fold 0 \\
+    --fold 1 \\
     --gpu 0 \\
-    --batch-size 32 \\
-    --num-epochs 50
+    --batch_size 32 \\
+    --num_epochs 50
 """)
     
     print("3. Inference:")
@@ -190,7 +190,7 @@ python schaf_method.py --mode inference \\
     --custom-data-dir {data_dir} \\
     --custom-he-image he_image.tif \\
     --custom-scenario-name my_tissue_example \\
-    --fold 0 \\
+    --fold 1 \\
     --gpu 0
 """)
 

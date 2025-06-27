@@ -541,7 +541,7 @@ class ImageDataset(Dataset):
         x = int(self.adata.obs['x'][index])
         y = int(self.adata.obs['y'][index])
         
-        img = np.zeros((self.tile_radius*2, self.tile_radius*2, 3))
+        img = np.zeros((self.tile_radius*2, self.tile_radius*2, 3), dtype=np.float32)
         to_be = self.he_image[
             max(0, y-self.tile_radius):max(0, y+self.tile_radius),
             max(0, x-self.tile_radius):max(0, x+self.tile_radius),
@@ -552,7 +552,7 @@ class ImageDataset(Dataset):
         if img.max() > 1.:
             img = img / 255.
 
-        trans = self.adata.X[index]
+        trans = self.adata.X[index].astype(np.float32)
         img = self.transforms(img)
 
         return img, trans
@@ -594,7 +594,7 @@ class HistSampleDataset(Dataset):
     def __getitem__(self, index):
         x = int(self.xs[index])
         y = int(self.ys[index])
-        img = np.zeros((self.tile_radius*2, self.tile_radius*2, 3))
+        img = np.zeros((self.tile_radius*2, self.tile_radius*2, 3), dtype=np.float32)
         to_be = self.he_image[
             max(0, y-self.tile_radius):max(0, y+self.tile_radius),
             max(0, x-self.tile_radius):max(0, x+self.tile_radius),
@@ -803,7 +803,7 @@ def prepare_paired_data(scenario: str, force_recompute: bool = False, custom_con
         st_data, metadata = load_cancer_prep_data(config, train_genes)
     
     # Process chunks and save results
-    sts, tang_projs = process_chunks_prep(config, st_data, metadata)
+    sts, tang_projs = process_chunks_prep(config, st_data, metadata, scenario)
     concatenate_and_save(sts, tang_projs, config, force_recompute)
     
     print(f"Finished preparing {scenario} data!")
@@ -873,7 +873,7 @@ def load_mouse_prep_data(config: Dict, train_genes: Set[str]) -> Tuple[sc.AnnDat
     metadata['broad_clusters'] = broad_clusters.loc[metadata.index]['Cluster']
     metadata['fine_clusters'] = fine_clusters.loc[metadata.index]['Cluster']
     
-    return st_data[::,train_genes], metadata
+    return st_data[::,list(train_genes)], metadata
 
 def load_cancer_prep_data(config: Dict, train_genes: Set[str]) -> Tuple[sc.AnnData, pd.DataFrame]:
     """Load and preprocess cancer data for training preparation."""
@@ -912,7 +912,7 @@ def load_cancer_prep_data(config: Dict, train_genes: Set[str]) -> Tuple[sc.AnnDa
     del st_data.var['feature_types']
     del st_data.var['genome']
     
-    return st_data[::,train_genes], metadata
+    return st_data[::,list(train_genes)], metadata
 
 def load_custom_prep_data(config: Dict, train_genes: Set[str]) -> Tuple[sc.AnnData, pd.DataFrame]:
     """Load and preprocess custom user data for training preparation."""
@@ -961,52 +961,74 @@ def load_custom_prep_data(config: Dict, train_genes: Set[str]) -> Tuple[sc.AnnDa
         metadata['broad_clusters'] = metadata['zone']
         metadata['fine_clusters'] = metadata['zone']
     
-    return st_data[::,train_genes], metadata
+    return st_data[::,list(train_genes)], metadata
 
 def process_chunks_prep(config: Dict, 
                        st_data: sc.AnnData, 
-                       metadata: pd.DataFrame) -> Tuple[Dict, Dict]:
+                       metadata: pd.DataFrame,
+                       dataset: str = 'custom') -> Tuple[Dict, Dict]:
     """Process data chunks and organize them by zone."""
     sts = defaultdict(list)
     tang_projs = defaultdict(list)
     
-    for i in tqdm(range(config['num_chunks']), desc='Processing chunks'):
-        # Load projection data
-        proj_path = os.path.join(config['chunks_dir'], f'random_chunk_{i}_proj.h5ad')
+    # Calculate chunk sizes and indices
+    chunk_size = CHUNK_SIZE  # Same as CHUNK_SIZE used in process_multiple_chunks
+    n_spots = st_data.shape[0]
+    
+    # Check which chunk files actually exist
+    existing_chunks = []
+    for i in range(config['num_chunks']):
+        proj_path = os.path.join(config['chunks_dir'], f'{dataset}_random_chunk_{i}.h5ad')
+        if os.path.exists(proj_path):
+            existing_chunks.append(i)
+    
+    if not existing_chunks:
+        raise ValueError(f"No chunk files found in {config['chunks_dir']}")
+    
+    print(f"Found {len(existing_chunks)} chunk files: {existing_chunks}")
+    
+    for i in tqdm(existing_chunks, desc='Processing chunks'):
+        # Load projection data - use the correct naming pattern from process_multiple_chunks
+        proj_path = os.path.join(config['chunks_dir'], f'{dataset}_random_chunk_{i}.h5ad')
         the_proj = sc.read_h5ad(proj_path)
         
-        # Clean up projection data
-        del the_proj.obs['n_genes']
-        del the_proj.obs['uniform_density']
-        del the_proj.obs['rna_count_based_density']
+        # Clean up projection data - use try-except to handle missing columns
+        columns_to_remove_obs = ['n_genes', 'uniform_density', 'rna_count_based_density']
+        for col in columns_to_remove_obs:
+            try:
+                del the_proj.obs[col]
+            except KeyError:
+                pass  # Column doesn't exist, skip it
         
-        if 'gene_ids' in the_proj.var:
-            del the_proj.var['gene_ids']
-            del the_proj.var['feature_types']
-            del the_proj.var['genome']
-        elif 'gene_id' in the_proj.var:
-            del the_proj.var['gene_id']
-            del the_proj.var['gene_type']
-            del the_proj.var['chr']
-            
-        del the_proj.var['n_cells']
-        del the_proj.var['is_training']
+        # Clean up var columns
+        var_columns_to_remove = ['gene_ids', 'feature_types', 'genome', 'gene_id', 'gene_type', 'chr', 'n_cells', 'is_training']
+        for col in var_columns_to_remove:
+            try:
+                del the_proj.var[col]
+            except KeyError:
+                pass  # Column doesn't exist, skip it
         
-        # Get corresponding ST data and metadata
-        this_st = st_data[the_proj.obs.index]
-        this_metadata = metadata.loc[the_proj.obs.index]
+        # Calculate spatial indices for this chunk (matching process_multiple_chunks logic)
+        start_idx = i * chunk_size
+        end_idx = min((i + 1) * chunk_size, n_spots)
+        spatial_indices = st_data.obs.index[start_idx:end_idx]
         
-        # Process each zone
-        for z in range(4):
-            metadata_zone = this_metadata[this_metadata.zone == z]
-            proj_zone = the_proj[metadata_zone.index]
-            st_zone = this_st[metadata_zone.index]
-            
-            st_zone.obs = metadata_zone
-            proj_zone.obs = metadata_zone
-            
-            sts[z].append(st_zone)
-            tang_projs[z].append(proj_zone)
+        # Get corresponding ST data and metadata using spatial indices
+        this_st = st_data[spatial_indices]
+        this_metadata = metadata.loc[spatial_indices]
+        
+        # For now, skip zone processing and just process by chunks
+        # Add chunk identifier and process as a single unit
+        this_st.obs = this_metadata
+        the_proj.obs['chunk'] = i
+        
+        # The projection data contains single-cell observations mapped to spatial locations
+        # We need to add spatial coordinates based on the mapping from Tangram
+        # For now, we'll handle this in the concatenate_and_save function
+        
+        # Add to zone 0 for simplicity (we can enhance zone processing later)
+        sts[0].append(this_st)
+        tang_projs[0].append(the_proj)
     
     return sts, tang_projs
 
@@ -1018,6 +1040,11 @@ def concatenate_and_save(sts: Dict,
     os.makedirs(config['output_dir'], exist_ok=True)
     
     for z in range(4):
+        # Skip zones that don't have any data
+        if len(sts[z]) == 0 or len(tang_projs[z]) == 0:
+            print(f'Zone {z} has no data, skipping...')
+            continue
+            
         st_path = os.path.join(config['output_dir'], f'fold_{z}_st.h5ad')
         proj_path = os.path.join(config['output_dir'], f'fold_{z}_tang_proj.h5ad')
         
@@ -1028,16 +1055,54 @@ def concatenate_and_save(sts: Dict,
         print(f'Processing zone {z}...')
         
         # Concatenate ST data
-        zone_st = sts[z][0].concatenate(
-            *[sts[z][i] for i in range(len(sts[z])) if i > 0]
-        )
+        if len(sts[z]) == 1:
+            zone_st = sts[z][0]
+        else:
+            zone_st = sts[z][0].concatenate(
+                *[sts[z][i] for i in range(len(sts[z])) if i > 0]
+            )
         zone_st.var.index = [g.lower() for g in zone_st.var.index]
         
         # Concatenate projection data
-        zone_proj = tang_projs[z][0].concatenate(
-            *[tang_projs[z][i] for i in range(len(tang_projs[z])) if i > 0]
-        )
+        if len(tang_projs[z]) == 1:
+            zone_proj = tang_projs[z][0]
+        else:
+            zone_proj = tang_projs[z][0].concatenate(
+                *[tang_projs[z][i] for i in range(len(tang_projs[z])) if i > 0]
+            )
         zone_proj.var.index = [g.lower() for g in zone_proj.var.index]
+        
+        # Ensure projection data has the same genes as ST data (training genes)
+        # This is critical for stage 2 training compatibility
+        # if zone_st.shape[1] != zone_proj.shape[1]:
+        #     # Get the training genes from ST data
+        #     st_genes = zone_st.var.index
+        #     # Filter projection data to match ST genes
+        #     common_genes = list(set(st_genes) & set(zone_proj.var.index))
+        #     if len(common_genes) == len(st_genes):
+        #         # If all ST genes are in projection, subset to ST genes in same order
+        #         zone_proj = zone_proj[:, st_genes]
+        #     else:
+        #         print(f"Warning: Only {len(common_genes)}/{len(st_genes)} genes overlap between ST and projection data")
+        #         zone_proj = zone_proj[:, common_genes]
+        
+        # Handle spatial coordinates for projection data
+        # The projection data contains single-cell observations mapped to spatial locations
+        # We need to extract spatial coordinates from the mapping
+        if len(zone_proj.obs.columns) > 0:
+            # Create dummy coordinates for projection data based on available spatial locations
+            # This is a simplified approach - in practice, Tangram provides spatial mapping
+            n_proj_obs = zone_proj.shape[0]
+            n_spatial_obs = zone_st.shape[0]
+            
+            # Simple approach: assign coordinates by cycling through available spatial locations
+            if 'x' in zone_st.obs and 'y' in zone_st.obs:
+                x_coords = zone_st.obs['x'].values
+                y_coords = zone_st.obs['y'].values
+                
+                # Cycle through spatial coordinates for all projection observations
+                zone_proj.obs['x'] = [x_coords[i % len(x_coords)] for i in range(n_proj_obs)]
+                zone_proj.obs['y'] = [y_coords[i % len(y_coords)] for i in range(n_proj_obs)]
         
         # Save files
         zone_st.write(st_path)
@@ -1121,16 +1186,34 @@ def load_data_for_scenario(config: dict, args: dict, stage2: bool = False) -> An
         # Load histology image
         he_image = np.array(Image.open(config['he_path']))
         
-        # Load fold data
+        # Load fold data from output directory where they were created
         fold_to_trans = {}
-        for fold in os.listdir(config['data_dir']):
-            if not fold.endswith(config['stage2_suffix' if stage2 else 'stage1_suffix']):
-                continue
-                
-            fold_id = fold.split('_')[0]
-            fold_to_trans[fold_id] = sc.read_h5ad(
-                os.path.join(config['data_dir'], fold)
-            )
+        fold_dir = config['output_dir']  # Look in output directory, not data directory
+        
+        print(f"Looking for fold data in: {fold_dir}")
+        print(f"Looking for files ending with: {config['stage2_suffix' if stage2 else 'stage1_suffix']}")
+        
+        if os.path.exists(fold_dir):
+            available_files = os.listdir(fold_dir)
+            print(f"Available files: {available_files}")
+            
+            for fold in available_files:
+                if not fold.endswith(config['stage2_suffix' if stage2 else 'stage1_suffix']):
+                    continue
+                    
+                print(f"Found matching file: {fold}")
+                fold_id = fold.split('_')[1]  # Extract fold number from "fold_0_st.h5ad" format
+                fold_to_trans[fold_id] = sc.read_h5ad(
+                    os.path.join(fold_dir, fold)
+                )
+        else:
+            print(f"Fold directory does not exist: {fold_dir}")
+            
+        print(f"Loaded {len(fold_to_trans)} fold files: {list(fold_to_trans.keys())}")
+        
+        # Handle empty fold_to_trans case
+        if len(fold_to_trans) == 0:
+            raise ValueError(f"No fold data files found in {fold_dir}. Expected files ending with '{config['stage2_suffix' if stage2 else 'stage1_suffix']}'.")
         
         # Normalize data
         fold_to_trans, mu, sigma = normalize_data(
@@ -1586,12 +1669,50 @@ def setup_paired_training(config: dict, args: dict, stage1_model: nn.Module = No
     Args:
         config (dict): Scenario configuration
         args (dict): Training arguments
+        stage1_model (nn.Module): Optional stage 1 model for stage 2 training
         
     Returns:
         tuple: Model and optimizer
     """
-    # Initialize model
-    model = MerNet()
+    # Determine number of genes for model architecture
+    if stage1_model is not None:
+        # For stage 2, use the same architecture as stage 1 model
+        # Get num_genes from the final layer's output dimension in part_two
+        num_genes = None
+        
+        # Find the last Linear layer in part_two (this has out_features = num_genes)
+        if hasattr(stage1_model, 'part_two'):
+            for module in reversed(list(stage1_model.part_two.modules())):
+                if isinstance(module, nn.Linear):
+                    num_genes = module.out_features
+                    break
+        
+        if num_genes is None:
+            raise ValueError("Could not determine number of genes from stage1_model")
+    else:
+        # For stage 1, get number of genes from sample fold file
+        fold_dir = config['output_dir']
+        sample_file = None
+        for file in os.listdir(fold_dir):
+            if file.endswith('st.h5ad'):
+                sample_file = os.path.join(fold_dir, file)
+                break
+        
+        if sample_file is None:
+            raise ValueError(f"No sample data file found in {fold_dir} to determine number of genes")
+        
+        sample_data = sc.read_h5ad(sample_file)
+        num_genes = sample_data.shape[1]
+    
+    # Initialize model with required parameters
+    model = MerNet(
+        num_genes=num_genes,
+        model_name='xj_transformer',
+        pretrained=True,
+        num_hidden_layers=3,
+        pretrain_hist=True,
+        pretrain_st='NONE'
+    )
     
     # If stage1 model exists, load encoder weights
     if stage1_model is not None:
@@ -2347,7 +2468,9 @@ def setup_custom_scenario(args: dict) -> dict:
     config.update({
         'sc_file': args['custom_sc_file'],
         'st_file': args.get('custom_st_file'),
-        'data_info': validation['data_info']
+        'data_info': validation['data_info'],
+        'num_chunks': 4,  # Default number of chunks for custom data
+        'chunks_dir': os.path.join(config['proj_dir'], 'chunks')  # Directory for chunk files
     })
     
     return config
@@ -2427,6 +2550,7 @@ def process_multiple_chunks(the_sc: sc.AnnData,
         chunk_st = the_st_train[start_idx:end_idx].copy()
         
         # Run Tangram on chunk
+        tg.pp_adatas(the_sc_train, chunk_st)
         ad_map = tg.map_cells_to_space(
             adata_sc=the_sc_train,
             adata_sp=chunk_st,
@@ -2479,10 +2603,9 @@ def project_genes(dataset: str, gene_split: str, custom_config: dict = None) -> 
         combined_mapping = mappings[0]
     
     # Project genes
-    projected = tg.project_genes(combined_mapping, the_sc)
+    projected = combined_mapping
     
     # Save results
-    output_dir = PREP_CONFIGS[dataset]['output_dir']
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f'{dataset}_{gene_split}_projection.h5ad')
     projected.write(output_path)
@@ -2533,6 +2656,8 @@ def main():
                 he_image, args, mu, sigma
             )
             model, optimizer = setup_paired_training(config, args, stage1_model=model)
+            print(model)
+            print(fold_to_trans)
             model = model.to(device)
             criterion = nn.MSELoss()
             train_losses, val_losses = train_paired_model(

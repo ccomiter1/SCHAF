@@ -426,7 +426,7 @@ def create_custom_scenario_config(scenario_name: str,
     # Update with user-provided values
     config.update({
         'data_dir': data_dir,
-        'he_path': he_image_filename,
+        'he_path': os.path.join(data_dir, he_image_filename),  # Use full path, not just filename
         'model_dir': f"{PROJECT_ROOT}/data/{scenario_name}/models",
         'output_dir': f"{PROJECT_ROOT}/data/{scenario_name}/inferences",
         'proj_dir': f"{PROJECT_ROOT}/data/{scenario_name}/folds",
