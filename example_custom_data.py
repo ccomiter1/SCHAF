@@ -39,7 +39,7 @@ def prepare_example_data(output_dir: str):
     adata_sc.var.index = [f"gene_{i}" for i in range(n_genes)]
     
     # Add some metadata
-    adata_sc.obs['cluster'] = np.random.choice(['cluster_A', 'cluster_B', 'cluster_C'], n_cells)
+    adata_sc.obs['sample'] = np.random.choice([0, 1, 2, 3], n_cells)
     
     # Save single-cell data
     sc_path = os.path.join(output_dir, "single_cell_data.h5ad")
@@ -47,24 +47,26 @@ def prepare_example_data(output_dir: str):
     print(f"✓ Created single-cell data: {sc_path}")
     
     # Create example spatial transcriptomics data
-    n_spots = 500
+    n_cells = 500
     
     # Generate spatial coordinates
-    x_coords = np.random.uniform(0, 1000, n_spots)
-    y_coords = np.random.uniform(0, 1000, n_spots)
+    x_coords = np.random.uniform(0, 1000, n_cells)
+    y_coords = np.random.uniform(0, 1000, n_cells)
     
     # Generate expression data (subset of genes from single-cell)
     spatial_genes = adata_sc.var.index[:1500]  # Use subset of genes
-    spatial_expression = np.random.negative_binomial(3, 0.4, size=(n_spots, len(spatial_genes)))
+    spatial_expression = np.random.negative_binomial(3, 0.4, size=(n_cells, len(spatial_genes)))
     
     # Create spatial AnnData object
     adata_st = sc.AnnData(X=spatial_expression)
-    adata_st.obs.index = [f"spot_{i}" for i in range(n_spots)]
+    adata_st.obs.index = [f"spatial_cell_{i}" for i in range(n_cells)]
     adata_st.var.index = spatial_genes
     
     # Add spatial coordinates
     adata_st.obsm['spatial'] = np.column_stack([x_coords, y_coords])
-    adata_st.obs['cluster'] = np.random.choice(['region_1', 'region_2', 'region_3'], n_spots)
+    adata_st.obs['fold'] = np.random.choice([0, 1, 2, 3], n_cells)
+    adata_st.obs['x'] = x_coords
+    adata_st.obs['y'] = y_coords
     
     # Save spatial data
     st_path = os.path.join(output_dir, "spatial_data.h5ad")
@@ -162,7 +164,7 @@ python schaf_method.py --mode train \\
     --custom-paired \\
     --custom-scenario-name my_tissue_example \\
     --fold 1 \\
-    --gpu 0 \\
+    --gpu 7 \\
     --batch_size 32 \\
     --num_epochs 50 \\
     --lr 0.001 \\
@@ -178,7 +180,7 @@ python schaf_method.py --mode train \\
     --custom-sc-file single_cell_data.h5ad \\
     --custom-scenario-name my_tissue_example \\
     --fold 1 \\
-    --gpu 0 \\
+    --gpu 7 \\
     --batch_size 32 \\
     --num_epochs 50
 """)
@@ -191,7 +193,7 @@ python schaf_method.py --mode inference \\
     --custom-he-image he_image.tif \\
     --custom-scenario-name my_tissue_example \\
     --fold 1 \\
-    --gpu 0
+    --gpu 7
 """)
 
 def main():

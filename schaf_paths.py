@@ -161,9 +161,9 @@ SCENARIO_KEYS = {
 # Custom data paths - users should modify these for their own datasets
 CUSTOM_DATA_PATHS = {
     # Raw data directories
-    'custom_he_images': f"{STORAGE_ROOT}/custom_data/he_images",
-    'custom_sc_data': f"{STORAGE_ROOT}/custom_data/single_cell",
-    'custom_st_data': f"{STORAGE_ROOT}/custom_data/spatial_transcriptomics",
+    'custom_he_image': f"{STORAGE_ROOT}/schaf_for_revision052424/SCHAF/example_custom_data/he_image.tif",
+    'custom_sc_data': f"{STORAGE_ROOT}/schaf_for_revision052424/SCHAF/example_custom_data/single_cell_data.h5ad",
+    'custom_st_data': f"{STORAGE_ROOT}/schaf_for_revision052424/SCHAF/example_custom_data/spatial_data.h5ad",
     
     # Processed data directories
     'custom_embeddings': f"{STORAGE_ROOT}/custom_data/embeddings",

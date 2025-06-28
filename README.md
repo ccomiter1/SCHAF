@@ -10,6 +10,10 @@ mamba env create -f schaf_environment.yml
 conda activate final_schaf
 ```
 
+## Demos
+
+Find the notebooks paired_schaf_demo.ipynb and unpaired_schaf_demo.ipynb. Each can be run as demos of Paired and Unpaired SCHAF, respectively. In each, a small, toy dataset is created, after which a model is trained on training data and inference is run on testing data.  
+
 ## Usage
 
 ### 1. Running SCHAF Method (schaf_method.py)

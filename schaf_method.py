@@ -86,7 +86,6 @@ from schaf_paths import *
 PROJECT_ROOT = Path(os.getcwd()).parent
 sys.path.extend([
     str(PROJECT_ROOT),
-    str(PROJECT_ROOT / "htapp_supervise/new_schaf_experiment_scripts/final_new_schaf_start_jan2324"),
 ])
 
 #######################################################################################
@@ -686,6 +685,13 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
                 
                 process_and_save_embeddings(the_chunk, xs, ys, name, embedding_maker, config['hist_embeddings_dir'], tile_radius)
 
+        else:  # this is for the demo case 
+            xs = np.array([i for i in range(100, 600)]) 
+            ys = np.array([i for i in range(100, 600)])
+            process_and_save_embeddings(the_chunk, xs, ys, name, embedding_maker, config['hist_embeddings_dir'], tile_radius)
+
+
+
     if modality in ['sc', 'both']:
         # Initialize scRNA-seq embedding model
         model_dir = MODEL_PATHS['scgpt_pancancer']
@@ -737,6 +743,26 @@ def generate_embeddings(scenario: str, config: dict, modality: str = 'both') -> 
                 k = file.split('.')[0]
                 sc_adata = sc.read_h5ad(os.path.join(config['sc_dir'], file))
                 sc_adata.var['gene_col'] = list(sc_adata.var.index)
+                sc.pp.log1p(sc_adata)
+                sc.pp.filter_cells(sc_adata, min_genes=1)
+                sc.pp.filter_genes(sc_adata, min_cells=1)
+                
+                with torch.no_grad():
+                    torch.cuda.empty_cache()
+                    embed_data = scgpt.tasks.embed_data(sc_adata, model_dir, gene_col='gene_col', batch_size=64)
+                    new_adata = sc.AnnData(X=embed_data.obsm['X_scGPT'], obs=embed_data.obs)
+                    os.makedirs(config['sc_embeddings_dir'], exist_ok=True)
+                    new_adata.write(f"{config['sc_embeddings_dir']}/{k}.h5ad")
+
+        else:  # demo example
+            # Process placenta scRNA-seq data
+            model_dir = MODEL_PATHS['scgpt_human']
+            the_sc = sc.read_h5ad(CUSTOM_DATA_PATHS['custom_sc_data'])
+            
+            for k in range(4):
+                sc_adata = the_sc[the_sc.obs['sample']==code]
+                sc_adata.var['gene_col'] = list(sc_adata.var.index)
+                sc_adata.X = np.array(sc_adata.X)
                 sc.pp.log1p(sc_adata)
                 sc.pp.filter_cells(sc_adata, min_genes=1)
                 sc.pp.filter_genes(sc_adata, min_cells=1)
@@ -920,12 +946,12 @@ def load_custom_prep_data(config: Dict, train_genes: Set[str]) -> Tuple[sc.AnnDa
     st_data = sc.read_h5ad(os.path.join(config['data_dir'], config['st_file']))
     
     # Ensure spatial coordinates are available
-    if 'spatial' in st_data.obsm:
-        xs = st_data.obsm['spatial'][:, 0].astype(int)
-        ys = st_data.obsm['spatial'][:, 1].astype(int)
-    elif 'x' in st_data.obs and 'y' in st_data.obs:
+    if 'x' in st_data.obs and 'y' in st_data.obs:
         xs = st_data.obs['x'].astype(int)
         ys = st_data.obs['y'].astype(int)
+    elif 'spatial' in st_data.obsm:
+        xs = st_data.obsm['spatial'][:, 0].astype(int)
+        ys = st_data.obsm['spatial'][:, 1].astype(int)
     else:
         raise ValueError("Spatial coordinates not found. Expected in obsm['spatial'] or obs['x']/obs['y']")
     
@@ -989,7 +1015,7 @@ def process_chunks_prep(config: Dict,
     
     for i in tqdm(existing_chunks, desc='Processing chunks'):
         # Load projection data - use the correct naming pattern from process_multiple_chunks
-        proj_path = os.path.join(config['chunks_dir'], f'{dataset}_random_chunk_{i}.h5ad')
+        proj_path = os.path.join(config['chunks_dir'], f'{dataset}_chunk_{i}.h5ad')
         the_proj = sc.read_h5ad(proj_path)
         
         # Clean up projection data - use try-except to handle missing columns
