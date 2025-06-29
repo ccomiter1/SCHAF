@@ -296,7 +296,7 @@ class HEGen(nn.Module):
     def __init__(self, latent_dim=1<<9):
         super(HEGen, self).__init__()
         self.part_two = nn.Sequential(
-            nn.Linear(1<<10, 1<<10),
+            nn.Linear(1<<9, 1<<10),
             nn.BatchNorm1d(1<<10),
             nn.ReLU(),
             nn.Linear(1<<10, 1<<10),
@@ -377,7 +377,7 @@ class HEDecoder(nn.Module):
             nn.Linear(1<<10, 1<<10),
             nn.BatchNorm1d(1<<10),
             nn.ReLU(),
-            nn.Linear(1<<10, 1<<10),
+            nn.Linear(1<<10, 1<<9),
         )
     def forward(self, x):
         return self.part_two(x)
